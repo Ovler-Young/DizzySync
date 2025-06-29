@@ -72,6 +72,8 @@ impl Downloader {
             return Ok(());
         }
 
+        info!("album_dir: {}", album_dir.display());
+
         fs::create_dir_all(&album_dir)?;
 
         // 生成README和NFO文件
