@@ -206,10 +206,17 @@ impl DizzylabClient {
         // 从HTML中提取下载密钥
         let download_key = self.extract_download_key(&document, format)?;
 
-        let download_url = format!(
-            "https://www.dizzylab.net/albums/download/?d={}&tp={}&k={}",
-            album_id, format, download_key
-        );
+        let download_url = if format == "gift" {
+            format!(
+                "https://www.dizzylab.net/albums/download_gift/{}/?k={}",
+                album_id, download_key
+            )
+        } else {
+            format!(
+                "https://www.dizzylab.net/albums/download/?d={}&tp={}&k={}",
+                album_id, format, download_key
+            )
+        };
 
         debug!("下载URL: {}", download_url);
 
@@ -315,20 +322,35 @@ impl DizzylabClient {
 
     fn extract_download_key(&self, document: &Html, format: &str) -> Result<String> {
         // 从下载链接中提取密钥
-        let tp_param = match format {
-            "128" => "128",
-            "MP3" => "MP3", 
-            "FLAC" => "FLAC",
-            _ => format,
-        };
+        if format == "gift" {
+            // gift: /albums/download_gift/ALBUM_ID/?k=KEY
+            let selector = Selector::parse(r#"a[href*="/albums/download_gift/"]"#).unwrap();
+            
+            if let Some(element) = document.select(&selector).next() {
+                if let Some(href) = element.value().attr("href") {
+                    if let Some(captures) = regex::Regex::new(r"k=([^&]+)")?.captures(href) {
+                        if let Some(key) = captures.get(1) {
+                            return Ok(key.as_str().to_string());
+                        }
+                    }
+                }
+            }
+        } else {
+            let tp_param = match format {
+                "128" => "128",
+                "MP3" => "MP3", 
+                "FLAC" => "FLAC",
+                _ => format,
+            };
 
-        let selector = Selector::parse(&format!(r#"a[href*="tp={}"]"#, tp_param)).unwrap();
-        
-        if let Some(element) = document.select(&selector).next() {
-            if let Some(href) = element.value().attr("href") {
-                if let Some(captures) = regex::Regex::new(r"k=([^&]+)")?.captures(href) {
-                    if let Some(key) = captures.get(1) {
-                        return Ok(key.as_str().to_string());
+            let selector = Selector::parse(&format!(r#"a[href*="tp={}"]"#, tp_param)).unwrap();
+            
+            if let Some(element) = document.select(&selector).next() {
+                if let Some(href) = element.value().attr("href") {
+                    if let Some(captures) = regex::Regex::new(r"k=([^&]+)")?.captures(href) {
+                        if let Some(key) = captures.get(1) {
+                            return Ok(key.as_str().to_string());
+                        }
                     }
                 }
             }
