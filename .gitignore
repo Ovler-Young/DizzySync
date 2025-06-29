@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Configuration files (may contain sensitive cookies)
+config.toml
+
+# Downloaded content directory
+DizzySync/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Backup files
+*.bak
+*~
+
+# Temporary files
+*.tmp 
+
+TODO.md
+
+sources/*

@@ -1,0 +1,45 @@
+# DizzySync 配置文件示例
+# 复制此文件为 config.toml 并修改相应配置
+
+[user]
+# 你的 Dizzylab Cookie
+# 从浏览器开发者工具中获取，格式如下：
+# sessionid=xxx; csrftoken=xxx
+cookie = "sessionid=your_session_id_here; csrftoken=your_csrf_token_here"
+
+[download]
+# 要下载的格式，可选值：["128", "MP3", "FLAC", "gift"]
+# "128" - 128kbps MP3
+# "MP3" - 320kbps MP3  
+# "FLAC" - 无损FLAC
+# "gift" - 特典内容
+formats = ["MP3", "FLAC"]
+
+# 格式子文件夹组织方式
+# false: 创建格式子文件夹，如 "专辑名/@厂牌名/MP3/文件" 和 "专辑名/@厂牌名/FLAC/文件"
+# true: 铺平格式，所有格式文件放在同一目录，如 "专辑名/@厂牌名/文件"
+flatten = false
+
+[paths]
+# 输出目录
+output_dir = "./DizzySync"
+
+# 目录名模板，支持变量：
+# {album} - 专辑名
+# {label} - 厂牌名
+# {authors} - 作者名（目前等同于厂牌名）
+# {year} - 当前年份
+# {date} - 当前日期 (YYYY-MM-DD)
+# 支持路径分隔符，如 "{year}/{label}/{album}"
+directory_template = "{album}/@{label}"
+
+[behavior]
+# 跳过已存在的目录
+skip_existing = true
+
+# 单线程下载（推荐保持true以避免给服务器造成压力）
+single_threaded = true
+
+# 文件生成选项
+generate_readme = true     # 生成README.md文件
+generate_nfo = true        # 生成NFO信息文件 
