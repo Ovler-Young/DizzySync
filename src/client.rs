@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Result};
-use reqwest::{Client, Response};
+use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
+use serde_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub uid: u32,
-    pub username: String,
     pub allcount: u32,
 }
 
@@ -38,15 +38,54 @@ pub struct AlbumListResponse {
 pub struct DizzylabClient {
     client: Client,
     cookie: String,
+    debug: bool,
 }
 
 impl DizzylabClient {
-    pub fn new(cookie: String) -> Result<Self> {
+    pub fn new(cookie: String, debug: bool) -> Result<Self> {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()?;
 
-        Ok(Self { client, cookie })
+        Ok(Self { client, cookie, debug })
+    }
+
+    // 辅助方法：记录HTTP响应用于调试
+    async fn log_response(&self, response: reqwest::Response, context: &str) -> Result<String> {
+        let status = response.status();
+        let headers = response.headers().clone();
+        let text = response.text().await?;
+        
+        if self.debug {
+            debug!("=== HTTP 调试信息 ({}) ===", context);
+            debug!("状态码: {}", status);
+            debug!("响应头: {:#?}", headers);
+            debug!("响应体: {}", text);
+            debug!("=== HTTP 调试信息结束 ===");
+        }
+        
+        Ok(text)
+    }
+
+    // 辅助方法：记录JSON响应用于调试
+    async fn log_json_response<T>(&self, response: reqwest::Response, context: &str) -> Result<T> 
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let status = response.status();
+        let headers = response.headers().clone();
+        let text = response.text().await?;
+        
+        if self.debug {
+            debug!("=== HTTP 调试信息 ({}) ===", context);
+            debug!("状态码: {}", status);
+            debug!("响应头: {:#?}", headers);
+            debug!("响应体: {}", text);
+            debug!("=== HTTP 调试信息结束 ===");
+        }
+        
+        let result: T = serde_json::from_str(&text)?;
+        Ok(result)
     }
 
     pub async fn get_user_info(&self) -> Result<UserInfo> {
@@ -59,18 +98,16 @@ impl DizzylabClient {
             .send()
             .await?;
 
-        let html = response.text().await?;
+        let html = self.log_response(response, "获取用户信息").await?;
         let document = Html::parse_document(&html);
 
         // 从HTML中提取用户ID
         let uid = self.extract_user_id(&document)?;
-        let username = self.extract_username(&document)?;
 
-        info!("获取到用户信息: ID={}, 用户名={}", uid, username);
+        info!("获取到用户信息: ID={}", uid);
 
         Ok(UserInfo {
             uid,
-            username,
             allcount: 0, // 这个值在后续API调用中会更新
         })
     }
@@ -104,7 +141,7 @@ impl DizzylabClient {
                 .send()
                 .await?;
 
-            let album_response: AlbumListResponse = response.json().await?;
+            let album_response: AlbumListResponse = self.log_json_response(response, &format!("获取专辑列表 offset={}", offset)).await?;
             
             all_albums.extend(album_response.discs);
             
@@ -133,7 +170,7 @@ impl DizzylabClient {
             .send()
             .await?;
 
-        let html = response.text().await?;
+        let html = self.log_response(response, &format!("获取专辑详情 {}", album.id)).await?;
         let document = Html::parse_document(&html);
 
         // 提取详细信息
@@ -158,7 +195,7 @@ impl DizzylabClient {
             .send()
             .await?;
 
-        let html = response.text().await?;
+        let html = self.log_response(response, &format!("获取下载密钥 {} {}", album_id, format)).await?;
         let document = Html::parse_document(&html);
 
         // 从HTML中提取下载密钥
@@ -188,6 +225,14 @@ impl DizzylabClient {
             .send()
             .await?;
 
+        if self.debug {
+            debug!("=== HTTP 下载调试信息 ({}) ===", album_id);
+            debug!("下载URL: {}", url);
+            debug!("状态码: {}", response.status());
+            debug!("响应头: {:#?}", response.headers());
+            debug!("=== HTTP 下载调试信息结束 ===");
+        }
+
         // 检查是否是重定向响应
         if response.status().is_redirection() {
             if let Some(location) = response.headers().get("location") {
@@ -202,7 +247,19 @@ impl DizzylabClient {
     }
 
     async fn download_from_cdn(&self, url: &str) -> Result<Vec<u8>> {
+        if self.debug {
+            debug!("=== CDN 下载调试信息 ===");
+            debug!("CDN URL: {}", url);
+        }
+        
         let response = self.client.get(url).send().await?;
+        
+        if self.debug {
+            debug!("CDN 状态码: {}", response.status());
+            debug!("CDN 响应头: {:#?}", response.headers());
+            debug!("=== CDN 下载调试信息结束 ===");
+        }
+        
         let bytes = response.bytes().await?;
         Ok(bytes.to_vec())
     }
@@ -218,7 +275,7 @@ impl DizzylabClient {
             .send()
             .await?;
 
-        let html = response.text().await?;
+        let html = self.log_response(response, &format!("获取token uid={}", uid)).await?;
         
         // 从JavaScript代码中提取token
         if let Some(start) = html.find("token = '") {
@@ -250,19 +307,6 @@ impl DizzylabClient {
         Err(anyhow!("无法从页面中提取用户ID"))
     }
 
-    fn extract_username(&self, document: &Html) -> Result<String> {
-        // 查找用户名，通常在下拉菜单或页面标题中
-        let selector = Selector::parse(".dropdown-header").unwrap();
-        
-        if let Some(element) = document.select(&selector).next() {
-            let text = element.text().collect::<Vec<_>>().join("");
-            if let Some(username) = text.strip_prefix("嗨！ ") {
-                return Ok(username.trim().to_string());
-            }
-        }
-
-        Err(anyhow!("无法从页面中提取用户名"))
-    }
 
     fn extract_download_key(&self, document: &Html, format: &str) -> Result<String> {
         // 从下载链接中提取密钥

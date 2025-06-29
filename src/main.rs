@@ -13,12 +13,6 @@ use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 初始化日志
-    tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
-        .with_target(false)
-        .init();
-
     let matches = Command::new("DizzySync")
         .version("0.1.0")
         .author("去离子水")
@@ -43,9 +37,31 @@ async fn main() -> Result<()> {
                 .help("仅列出专辑，不下载")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("debug")
+                .long("debug")
+                .help("启用调试模式，打印所有HTTP响应")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let config_path = matches.get_one::<String>("config").unwrap();
+
+    // 初始化日志，如果有debug参数则使用DEBUG级别
+    let log_level = if matches.get_flag("debug") {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
+    
+    tracing_subscriber::fmt()
+        .with_max_level(log_level)
+        .with_target(false)
+        .init();
+
+    if matches.get_flag("debug") {
+        info!("调试模式已启用，将显示所有HTTP响应");
+    }
 
     // 如果指定了 --init，创建默认配置文件
     if matches.get_flag("init") {
@@ -61,7 +77,12 @@ async fn main() -> Result<()> {
     }
 
     // 加载配置
-    let config = Config::load_from_file(config_path)?;
+    let mut config = Config::load_from_file(config_path)?;
+    
+    // 如果命令行指定了debug，覆盖配置文件设置
+    if matches.get_flag("debug") {
+        config.behavior.debug = true;
+    }
     
     // 验证配置
     if config.user.cookie.is_empty() {
@@ -70,11 +91,10 @@ async fn main() -> Result<()> {
     }
 
     // 创建客户端
-    let client = DizzylabClient::new(config.user.cookie.clone())?;
+    let client = DizzylabClient::new(config.user.cookie.clone(), config.behavior.debug)?;
 
     // 获取用户信息
     let user_info = client.get_user_info().await?;
-    info!("欢迎，{}！", user_info.username);
 
     // 获取用户专辑列表
     let albums = client.get_user_albums(user_info.uid).await?;

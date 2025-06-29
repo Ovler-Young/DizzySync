@@ -35,10 +35,16 @@ pub struct BehaviorConfig {
     pub generate_readme: bool,
     #[serde(default = "default_true")]
     pub generate_nfo: bool,
+    #[serde(default = "default_false")]
+    pub debug: bool,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }
 
 impl Default for Config {
@@ -60,6 +66,7 @@ impl Default for Config {
                 single_threaded: true,
                 generate_readme: true,
                 generate_nfo: true,
+                debug: false,
             },
         }
     }

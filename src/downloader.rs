@@ -1,7 +1,7 @@
 use crate::client::{Album, DizzylabClient};
 use crate::config::Config;
 use anyhow::{anyhow, Result};
-use chrono;
+use chrono::{self, Datelike};
 use std::fs::{self, File};
 use std::io::{Cursor, Write};
 use std::path::PathBuf;
@@ -19,7 +19,8 @@ impl Downloader {
     }
 
     pub async fn sync_all_albums(&self, mut albums: Vec<Album>) -> Result<()> {
-        info!("开始同步 {} 个专辑", albums.len());
+        let total_albums = albums.len();
+        info!("开始同步 {} 个专辑", total_albums);
 
         // 创建主输出目录
         fs::create_dir_all(&self.config.paths.output_dir)?;
@@ -28,7 +29,7 @@ impl Downloader {
             info!(
                 "处理专辑 {}/{}: {} - {}",
                 index + 1,
-                albums.len(),
+                total_albums,
                 album.title,
                 album.label
             );
@@ -129,7 +130,7 @@ impl Downloader {
     fn extract_zip_file(
         &self,
         zip_data: &[u8],
-        album: &Album,
+        _album: &Album,
         format: &str,
         album_dir: &PathBuf,
     ) -> Result<()> {
@@ -261,7 +262,7 @@ impl Downloader {
     }
 
     fn load_readme_template(&self) -> Result<String> {
-        fs::read_to_string("readme.template.md")
+        Ok(fs::read_to_string("readme.template.md")?)
     }
 
     fn get_default_readme_template(&self) -> String {
