@@ -204,7 +204,19 @@ impl DizzylabClient {
         let document = Html::parse_document(&html);
 
         // 从HTML中提取下载密钥
-        let download_key = self.extract_download_key(&document, format)?;
+        let download_key = match self.extract_download_key(&document, format) {
+            Ok(key) => key,
+            Err(_) => {
+                // 如果是gift格式且找不到，说明该专辑没有特典内容，返回空结果
+                if format == "gift" {
+                    info!("专辑 {} 没有特典内容，跳过", album_id);
+                    return Ok(HashMap::new());
+                } else {
+                    // 对于其他格式，仍然返回错误
+                    return Err(anyhow!("无法从页面中提取下载密钥，格式: {}", format));
+                }
+            }
+        };
 
         let download_url = if format == "gift" {
             format!(

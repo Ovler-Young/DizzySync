@@ -107,6 +107,12 @@ impl Downloader {
         // 获取下载链接
         let download_links = self.client.get_download_links(&album.id, format).await?;
         
+        // 检查是否有有效的下载链接（主要针对gift格式）
+        if download_links.is_empty() {
+            info!("专辑 {} 没有 {} 格式，跳过", album.title, format);
+            return Ok(());
+        }
+        
         let download_url = download_links
             .get(format)
             .ok_or_else(|| anyhow!("无法获取格式 {} 的下载链接", format))?;
