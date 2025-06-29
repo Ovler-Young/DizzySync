@@ -20,10 +20,15 @@ pub struct Album {
     pub cover: String,
     #[serde(rename = "onlyhavegift")]
     pub only_have_gift: bool,
+    #[serde(default)]
     pub release_date: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub year: Option<String>,
+    #[serde(default)]
     pub authors: Option<String>,
 }
 
