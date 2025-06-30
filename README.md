@@ -71,9 +71,21 @@ sessionid=your_session_id_here; csrftoken=your_csrf_token_here
 
 # 使用自定义配置文件
 ./dizzysync -c /path/to/config.toml
+
+# 更多命令行选项示例
+./dizzysync --skip-existing                    # 跳过已存在的目录（默认true）
+./dizzysync --skip-existing false              # 不跳过已存在的目录
+./dizzysync --single-threaded                  # 启用单线程模式（默认true）
+./dizzysync --single-threaded false            # 禁用单线程模式
+./dizzysync --generate-readme false --generate-nfo false  # 不生成README和NFO文件
+./dizzysync --flatten                          # 铺平文件结构（默认true）
+./dizzysync -o ./MyMusic                       # 指定输出目录
+./dizzysync --output-dir /path/to/music        # 指定输出目录（完整格式）
 ```
 
 ## 配置选项
+
+**注意**: 大部分配置选项都可以通过命令行参数覆盖。
 
 ### 下载格式
 
@@ -181,6 +193,33 @@ metadata_only = true  # 仅下载元数据，不下载音频文件
 
 专辑ID通常可以从Dizzylab的专辑页面URL中获取，格式如：`https://www.dizzylab.net/d/SWQX-01/`
 
+### 命令行选项
+
+以下命令行参数可以覆盖配置文件设置：
+
+**注意**: 对于布尔值参数，可以省略值（默认为true）或明确指定true/false。例如：
+- `--skip-existing` 等同于 `--skip-existing true`
+- `--skip-existing false` 明确设为false
+
+#### 下载行为
+- `--metadata-only` - 仅下载元数据，不下载音频文件
+- `--skip-existing [true/false]` - 跳过已存在的目录（省略值时默认为true）
+- `--single-threaded [true/false]` - 单线程模式（省略值时默认为true）
+
+#### 文件生成
+- `--generate-readme [true/false]` - 生成README.md文件（省略值时默认为true）
+- `--generate-nfo [true/false]` - 生成NFO文件（省略值时默认为true）
+
+#### 文件组织
+- `--flatten [true/false]` - 铺平文件结构，不创建格式子文件夹（省略值时默认为true）
+- `-o DIR`, `--output-dir DIR` - 指定输出目录
+
+#### 其他
+- `--id ALBUM_ID` - 仅下载指定ID的专辑
+- `--dry-run` - 仅列出专辑，不下载
+- `--debug` - 启用调试模式
+- `-c FILE`, `--config FILE` - 指定配置文件路径
+
 ## 项目路线图
 
 ### Phase 1: Core Demo (当前)
@@ -193,6 +232,7 @@ metadata_only = true  # 仅下载元数据，不下载音频文件
 - [x] 命令行界面
 - [x] 元数据模式
 - [x] 指定专辑ID下载
+- [x] 命令行参数覆盖配置
 
 ### Phase 2: GUI界面 (计划中)
 - [ ] Tauri框架集成

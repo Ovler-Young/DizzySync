@@ -10,6 +10,7 @@ use downloader::Downloader;
 use std::path::Path;
 use tracing::{error, info, Level};
 use tracing_subscriber;
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,6 +55,59 @@ async fn main() -> Result<()> {
                 .long("id")
                 .value_name("ALBUM_ID")
                 .help("仅下载指定ID的专辑（例如：dts）")
+                .value_parser(clap::value_parser!(String)),
+        )
+        .arg(
+            Arg::new("skip-existing")
+                .long("skip-existing")
+                .value_name("[BOOL]")
+                .help("跳过已存在的目录 [默认: true]")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool)),
+        )
+        .arg(
+            Arg::new("single-threaded")
+                .long("single-threaded")
+                .value_name("[BOOL]")
+                .help("单线程模式 [默认: true]")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool)),
+        )
+        .arg(
+            Arg::new("generate-readme")
+                .long("generate-readme")
+                .value_name("[BOOL]")
+                .help("生成README.md文件 [默认: true]")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool)),
+        )
+        .arg(
+            Arg::new("generate-nfo")
+                .long("generate-nfo")
+                .value_name("[BOOL]")
+                .help("生成NFO文件 [默认: true]")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool)),
+        )
+        .arg(
+            Arg::new("flatten")
+                .long("flatten")
+                .value_name("[BOOL]")
+                .help("铺平文件结构，不创建格式子文件夹 [默认: true]")
+                .num_args(0..=1)
+                .default_missing_value("true")
+                .value_parser(clap::value_parser!(bool)),
+        )
+        .arg(
+            Arg::new("output-dir")
+                .long("output-dir")
+                .short('o')
+                .value_name("DIR")
+                .help("指定输出目录")
                 .value_parser(clap::value_parser!(String)),
         )
         .get_matches();
@@ -101,6 +155,37 @@ async fn main() -> Result<()> {
     if matches.get_flag("metadata-only") {
         config.behavior.metadata_only = true;
         info!("启用仅元数据模式：只下载专辑信息，不下载音频文件");
+    }
+    
+    // 处理其他命令行参数覆盖配置
+    if let Some(skip_existing) = matches.get_one::<bool>("skip-existing") {
+        config.behavior.skip_existing = *skip_existing;
+        info!("设置跳过已存在目录: {}", skip_existing);
+    }
+    
+    if let Some(single_threaded) = matches.get_one::<bool>("single-threaded") {
+        config.behavior.single_threaded = *single_threaded;
+        info!("设置单线程模式: {}", single_threaded);
+    }
+    
+    if let Some(generate_readme) = matches.get_one::<bool>("generate-readme") {
+        config.behavior.generate_readme = *generate_readme;
+        info!("设置README.md生成: {}", generate_readme);
+    }
+    
+    if let Some(generate_nfo) = matches.get_one::<bool>("generate-nfo") {
+        config.behavior.generate_nfo = *generate_nfo;
+        info!("设置NFO文件生成: {}", generate_nfo);
+    }
+    
+    if let Some(flatten) = matches.get_one::<bool>("flatten") {
+        config.download.flatten = *flatten;
+        info!("设置铺平文件结构: {}", flatten);
+    }
+    
+    if let Some(output_dir) = matches.get_one::<String>("output-dir") {
+        config.paths.output_dir = PathBuf::from(output_dir);
+        info!("设置输出目录: {}", output_dir);
     }
     
     // 验证配置
