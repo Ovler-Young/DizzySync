@@ -164,6 +164,29 @@ impl DizzylabClient {
         Ok(all_albums)
     }
 
+    pub async fn get_album_by_id(&self, album_id: &str) -> Result<Album> {
+        info!("根据ID获取专辑信息: {}", album_id);
+        
+        // 创建基本的专辑结构
+        let mut album = Album {
+            id: album_id.to_string(),
+            title: "未知专辑".to_string(),
+            label: "未知厂牌".to_string(),
+            cover: String::new(),
+            only_have_gift: false,
+            release_date: None,
+            description: None,
+            tags: Vec::new(),
+            year: None,
+            authors: None,
+        };
+
+        // 获取专辑详细信息，更新所有字段
+        self.get_album_details(&mut album).await?;
+        
+        Ok(album)
+    }
+
     pub async fn get_album_details(&self, album: &mut Album) -> Result<()> {
         info!("获取专辑 {} 的详细信息", album.id);
 
@@ -179,6 +202,13 @@ impl DizzylabClient {
         let document = Html::parse_document(&html);
 
         // 提取详细信息
+        // 如果标题或厂牌是默认值，尝试从页面提取
+        if album.title == "未知专辑" {
+            album.title = self.extract_title(&document)?.unwrap_or_else(|| album.title.clone());
+        }
+        if album.label == "未知厂牌" {
+            album.label = self.extract_label(&document)?.unwrap_or_else(|| album.label.clone());
+        }
         album.release_date = self.extract_release_date(&document)?;
         album.description = self.extract_description(&document)?;
         album.tags = self.extract_tags(&document);
@@ -331,6 +361,51 @@ impl DizzylabClient {
         Err(anyhow!("无法从页面中提取用户ID"))
     }
 
+    fn extract_title(&self, document: &Html) -> Result<Option<String>> {
+        // 从页面标题中提取专辑名称
+        let title_selector = Selector::parse("title").unwrap();
+        if let Some(title_element) = document.select(&title_selector).next() {
+            let title_text = title_element.text().collect::<Vec<_>>().join("");
+            // Dizzylab的页面标题格式通常是 "专辑名 - Dizzylab"
+            if let Some(album_title) = title_text.split(" - ").next() {
+                return Ok(Some(album_title.trim().to_string()));
+            }
+        }
+
+        // 尝试从h1标签提取
+        let h1_selector = Selector::parse("h1").unwrap();
+        if let Some(h1_element) = document.select(&h1_selector).next() {
+            let h1_text = h1_element.text().collect::<Vec<_>>().join("").trim().to_string();
+            if !h1_text.is_empty() {
+                return Ok(Some(h1_text));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn extract_label(&self, document: &Html) -> Result<Option<String>> {
+        // 尝试从页面中提取厂牌信息
+        // 这可能需要根据实际的Dizzylab页面结构来调整
+        let label_selector = Selector::parse(".album-info .label, .disc-label, [class*='label']").unwrap();
+        if let Some(label_element) = document.select(&label_selector).next() {
+            let label_text = label_element.text().collect::<Vec<_>>().join("").trim().to_string();
+            if !label_text.is_empty() {
+                return Ok(Some(label_text));
+            }
+        }
+
+        // 如果找不到，尝试从链接中提取
+        let link_selector = Selector::parse(r#"a[href*="/l/"]"#).unwrap();
+        if let Some(link_element) = document.select(&link_selector).next() {
+            let link_text = link_element.text().collect::<Vec<_>>().join("").trim().to_string();
+            if !link_text.is_empty() {
+                return Ok(Some(link_text));
+            }
+        }
+
+        Ok(None)
+    }
 
     fn extract_download_key(&self, document: &Html, format: &str) -> Result<String> {
         // 从下载链接中提取密钥

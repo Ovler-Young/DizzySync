@@ -63,6 +63,12 @@ sessionid=your_session_id_here; csrftoken=your_csrf_token_here
 # 仅下载元数据（专辑信息、封面、README、NFO），不下载音频文件
 ./dizzysync --metadata-only
 
+# 仅下载指定ID的专辑
+./dizzysync --id dts
+
+# 组合使用：仅下载指定专辑的元数据
+./dizzysync --id dts --metadata-only
+
 # 使用自定义配置文件
 ./dizzysync -c /path/to/config.toml
 ```
@@ -154,7 +160,26 @@ metadata_only = true  # 仅下载元数据，不下载音频文件
 - README.md 文件（包含专辑详细信息）
 - NFO 文件（媒体库兼容格式）
 
-但**不会**下载任何音频文件。
+但**不会**下载任何音频文件。这对以下场景很有用：
+- 快速建立音乐库索引
+- 节省存储空间
+- 仅获取专辑信息进行浏览
+
+### 指定专辑下载
+
+可以使用`--id`参数下载指定ID的单个专辑：
+
+```bash
+./dizzysync --id SWQX-01
+```
+
+这对以下场景很有用：
+- 只想下载特定的专辑
+- 测试下载功能
+- 重新下载某个专辑
+- 与其他参数组合使用（如`--metadata-only`）
+
+专辑ID通常可以从Dizzylab的专辑页面URL中获取，格式如：`https://www.dizzylab.net/d/SWQX-01/`
 
 ## 项目路线图
 
@@ -167,6 +192,7 @@ metadata_only = true  # 仅下载元数据，不下载音频文件
 - [x] 文件组织逻辑
 - [x] 命令行界面
 - [x] 元数据模式
+- [x] 指定专辑ID下载
 
 ### Phase 2: GUI界面 (计划中)
 - [ ] Tauri框架集成

@@ -49,6 +49,13 @@ async fn main() -> Result<()> {
                 .help("仅下载元数据（专辑信息、封面、README、NFO），不下载音频文件")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("id")
+                .long("id")
+                .value_name("ALBUM_ID")
+                .help("仅下载指定ID的专辑（例如：dts）")
+                .value_parser(clap::value_parser!(String)),
+        )
         .get_matches();
 
     let config_path = matches.get_one::<String>("config").unwrap();
@@ -108,8 +115,21 @@ async fn main() -> Result<()> {
     // 获取用户信息
     let user_info = client.get_user_info().await?;
 
-    // 获取用户专辑列表
-    let albums = client.get_user_albums(user_info.uid).await?;
+    // 根据是否指定了ID来获取专辑列表
+    let albums = if let Some(album_id) = matches.get_one::<String>("id") {
+        info!("获取指定专辑: {}", album_id);
+        // 获取单个专辑
+        match client.get_album_by_id(album_id).await {
+            Ok(album) => vec![album],
+            Err(e) => {
+                error!("获取专辑 {} 失败: {}", album_id, e);
+                return Ok(());
+            }
+        }
+    } else {
+        // 获取用户的所有专辑
+        client.get_user_albums(user_info.uid).await?
+    };
     
     if albums.is_empty() {
         info!("没有找到任何专辑");
