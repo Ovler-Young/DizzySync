@@ -7,8 +7,16 @@ use std::io::{Cursor, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use zip::ZipArchive;
+use unrar::Archive;
 use encoding_rs::GBK;
 use std::borrow::Cow;
+
+#[derive(Debug, Clone, Copy)]
+enum ArchiveFormat {
+    Zip,
+    Rar,
+    Unknown,
+}
 
 pub struct Downloader {
     client: DizzylabClient,
@@ -128,16 +136,22 @@ impl Downloader {
         // 下载文件
         let file_data = self.client.download_file(download_url, &album.id).await?;
 
-        // 检查是否为ZIP文件
-        if file_data.starts_with(b"PK") {
-            // 这是一个ZIP文件，需要解压
-            self.extract_zip_file(&file_data, album, format, album_dir)?;
-        } else {
-            // 直接保存文件
-            let filename = format!("{}.{}", album.title, self.get_file_extension(format));
-            let file_path = album_dir.join(filename);
-            let mut file = File::create(file_path)?;
-            file.write_all(&file_data)?;
+        // 检查压缩文件格式并解压
+        let archive_format = self.detect_archive_format(&file_data);
+        match archive_format {
+            ArchiveFormat::Zip => {
+                self.extract_zip_file(&file_data, album, format, album_dir)?;
+            }
+            ArchiveFormat::Rar => {
+                self.extract_rar_file(&file_data, album, format, album_dir)?;
+            }
+            ArchiveFormat::Unknown => {
+                // 直接保存文件
+                let filename = format!("{}.{}", album.title, self.get_file_extension(format));
+                let file_path = album_dir.join(filename);
+                let mut file = File::create(file_path)?;
+                file.write_all(&file_data)?;
+            }
         }
 
         Ok(())
@@ -189,6 +203,112 @@ impl Downloader {
             std::io::copy(&mut file, &mut output_file)?;
         }
 
+        Ok(())
+    }
+
+    fn detect_archive_format(&self, data: &[u8]) -> ArchiveFormat {
+        if data.len() < 4 {
+            return ArchiveFormat::Unknown;
+        }
+
+        // 检查ZIP格式
+        if data.starts_with(b"PK") {
+            return ArchiveFormat::Zip;
+        }
+
+        // 检查RAR格式
+        // RAR5格式的魔数
+        if data.len() >= 8 && &data[0..8] == b"Rar!\x1a\x07\x01\x00" {
+            return ArchiveFormat::Rar;
+        }
+        // RAR4格式的魔数
+        if data.len() >= 7 && &data[0..7] == b"Rar!\x1a\x07\x00" {
+            return ArchiveFormat::Rar;
+        }
+
+        ArchiveFormat::Unknown
+    }
+
+    fn extract_rar_file(
+        &self,
+        rar_data: &[u8],
+        album: &Album,
+        format: &str,
+        album_dir: &PathBuf,
+    ) -> Result<()> {
+        // 创建临时文件来存储RAR数据
+        let temp_file_path = album_dir.join(format!("temp_{}.rar", album.id));
+        
+        // 写入临时文件
+        fs::write(&temp_file_path, rar_data)?;
+        
+        // 使用unrar库解压
+        let archive = Archive::new(&temp_file_path);
+        let archive = archive.open_for_processing()?;
+        
+        // 递归处理所有文件
+        self.process_rar_archive(archive, format, album_dir)?;
+        
+        // 删除临时文件
+        if let Err(e) = fs::remove_file(&temp_file_path) {
+            warn!("删除临时RAR文件失败: {}", e);
+        }
+        
+        Ok(())
+    }
+
+    fn process_rar_archive(
+        &self,
+        mut archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
+        format: &str,
+        album_dir: &PathBuf,
+    ) -> Result<()> {
+        loop {
+            match archive.read_header() {
+                Ok(Some(header_archive)) => {
+                    let entry = header_archive.entry();
+                    let filename = &entry.filename;
+                    
+                    // 跳过目录
+                    if entry.is_directory() {
+                        archive = header_archive.skip()?;
+                        continue;
+                    }
+
+                    debug!("解压RAR文件: {}", filename.display());
+
+                    let output_path = if self.config.download.flatten {
+                        // 铺平模式：直接放在专辑目录下
+                        album_dir.join(filename)
+                    } else {
+                        // 格式子文件夹模式：根据格式创建子目录
+                        let format_dir = album_dir.join(format);
+                        fs::create_dir_all(&format_dir)?;
+                        format_dir.join(filename)
+                    };
+
+                    // 确保输出目录存在
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+
+                    // 解压文件
+                    let (data, next_archive) = header_archive.read()?;
+                    fs::write(&output_path, data)?;
+                    
+                    archive = next_archive;
+                }
+                Ok(None) => {
+                    // 没有更多文件
+                    break;
+                }
+                Err(e) => {
+                    error!("读取RAR头部失败: {}", e);
+                    break;
+                }
+            }
+        }
+        
         Ok(())
     }
 
@@ -260,7 +380,7 @@ impl Downloader {
             "128" => "mp3",
             "MP3" => "mp3",
             "FLAC" => "flac",
-            "gift" => "zip",
+            "gift" => "unknown", // gift格式可能是ZIP或RAR，让自动检测处理
             _ => "bin",
         }
     }
