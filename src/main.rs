@@ -8,8 +8,8 @@ use client::DizzylabClient;
 use config::Config;
 use downloader::Downloader;
 use std::path::Path;
-use tracing::{error, info, Level};
-use tracing_subscriber;
+use tracing::{error, info};
+use tracing_subscriber::{EnvFilter, fmt};
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -114,15 +114,14 @@ async fn main() -> Result<()> {
 
     let config_path = matches.get_one::<String>("config").unwrap();
 
-    // 初始化日志，如果有debug参数则使用DEBUG级别
-    let log_level = if matches.get_flag("debug") {
-        Level::DEBUG
+    let env_filter = if matches.get_flag("debug") {
+        EnvFilter::new("dizzysync=debug,scraper=warn,info,html5ever=warn,info,selectors=warn,info")
     } else {
-        Level::INFO
+        EnvFilter::new("info")
     };
     
-    tracing_subscriber::fmt()
-        .with_max_level(log_level)
+    fmt()
+        .with_env_filter(env_filter)
         .with_target(false)
         .init();
 
