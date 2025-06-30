@@ -27,6 +27,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # 文件处理
 zip = "0.6"
+encoding_rs = "0.8"
 
 # HTML解析
 scraper = "0.18"

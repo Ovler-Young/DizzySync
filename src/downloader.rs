@@ -7,6 +7,8 @@ use std::io::{Cursor, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use zip::ZipArchive;
+use encoding_rs::GBK;
+use std::borrow::Cow;
 
 pub struct Downloader {
     client: DizzylabClient,
@@ -153,7 +155,13 @@ impl Downloader {
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
-            let file_name = file.name().to_string();
+            
+            // 使用 name_raw() 获取原始字节，然后尝试解码
+            let file_name_raw = file.name_raw();
+            let file_name: Cow<str> = match std::str::from_utf8(file_name_raw) {
+                Ok(name) => Cow::Borrowed(name),
+                Err(_) => GBK.decode(file_name_raw).0,
+            };
 
             // 跳过目录
             if file_name.ends_with('/') {
@@ -164,12 +172,12 @@ impl Downloader {
 
             let output_path = if self.config.download.flatten {
                 // 铺平模式：直接放在专辑目录下，不创建格式子文件夹
-                album_dir.join(&file_name)
+                album_dir.join(&*file_name)
             } else {
                 // 格式子文件夹模式：根据格式创建子目录
                 let format_dir = album_dir.join(format);
                 fs::create_dir_all(&format_dir)?;
-                format_dir.join(&file_name)
+                format_dir.join(&*file_name)
             };
 
             // 确保输出目录存在
