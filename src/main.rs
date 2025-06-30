@@ -43,6 +43,12 @@ async fn main() -> Result<()> {
                 .help("启用调试模式，打印所有HTTP响应")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("metadata-only")
+                .long("metadata-only")
+                .help("仅下载元数据（专辑信息、封面、README、NFO），不下载音频文件")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let config_path = matches.get_one::<String>("config").unwrap();
@@ -82,6 +88,12 @@ async fn main() -> Result<()> {
     // 如果命令行指定了debug，覆盖配置文件设置
     if matches.get_flag("debug") {
         config.behavior.debug = true;
+    }
+    
+    // 如果命令行指定了metadata-only，覆盖配置文件设置
+    if matches.get_flag("metadata-only") {
+        config.behavior.metadata_only = true;
+        info!("启用仅元数据模式：只下载专辑信息，不下载音频文件");
     }
     
     // 验证配置

@@ -43,3 +43,8 @@ single_threaded = true
 # 文件生成选项
 generate_readme = true     # 生成README.md文件
 generate_nfo = true        # 生成NFO信息文件 
+
+# 仅下载元数据
+# true: 只下载专辑信息、封面、README和NFO文件，不下载音频文件
+# false: 下载完整的专辑内容（默认）
+metadata_only = false 

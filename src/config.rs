@@ -37,6 +37,8 @@ pub struct BehaviorConfig {
     pub generate_nfo: bool,
     #[serde(default = "default_false")]
     pub debug: bool,
+    #[serde(default = "default_false")]
+    pub metadata_only: bool,
 }
 
 fn default_true() -> bool {
@@ -67,6 +69,7 @@ impl Default for Config {
                 generate_readme: true,
                 generate_nfo: true,
                 debug: false,
+                metadata_only: false,
             },
         }
     }

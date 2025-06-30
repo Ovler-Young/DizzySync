@@ -60,6 +60,9 @@ sessionid=your_session_id_here; csrftoken=your_csrf_token_here
 # 开始同步
 ./dizzysync
 
+# 仅下载元数据（专辑信息、封面、README、NFO），不下载音频文件
+./dizzysync --metadata-only
+
 # 使用自定义配置文件
 ./dizzysync -c /path/to/config.toml
 ```
@@ -130,6 +133,29 @@ flatten = false  # 控制是否创建格式子文件夹
         └─ 02 Track Two.flac
   ```
 
+
+### 元数据模式
+
+可以通过配置文件或命令行参数启用元数据模式：
+
+```toml
+[behavior]
+metadata_only = true  # 仅下载元数据，不下载音频文件
+```
+
+或使用命令行参数：
+```bash
+./dizzysync --metadata-only
+```
+
+元数据模式会下载：
+- 专辑信息和详细描述
+- 专辑封面（如果可用）
+- README.md 文件（包含专辑详细信息）
+- NFO 文件（媒体库兼容格式）
+
+但**不会**下载任何音频文件。
+
 ## 项目路线图
 
 ### Phase 1: Core Demo (当前)
@@ -140,6 +166,7 @@ flatten = false  # 控制是否创建格式子文件夹
 - [x] 文件下载功能
 - [x] 文件组织逻辑
 - [x] 命令行界面
+- [x] 元数据模式
 
 ### Phase 2: GUI界面 (计划中)
 - [ ] Tauri框架集成
@@ -183,4 +210,4 @@ flatten = false  # 控制是否创建格式子文件夹
 
 ## License
 
-MIT License 
+MIT License

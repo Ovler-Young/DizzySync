@@ -89,6 +89,12 @@ impl Downloader {
             }
         }
 
+        // 如果只下载元数据，跳过音频文件下载
+        if self.config.behavior.metadata_only {
+            info!("仅下载元数据模式：跳过音频文件下载 - {}", album.title);
+            return Ok(());
+        }
+
         // 下载每种格式
         for format in &self.config.download.formats {
             if let Err(e) = self.download_format(album, format, &album_dir).await {
