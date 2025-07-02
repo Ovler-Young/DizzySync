@@ -99,6 +99,11 @@ impl Downloader {
             }
         }
 
+        // 下载封面
+        if let Err(e) = self.download_cover(album, &album_dir).await {
+            warn!("下载封面失败: {}", e);
+        }
+
         // 如果只下载元数据，跳过音频文件下载
         if self.config.behavior.metadata_only {
             info!("仅下载元数据模式：跳过音频文件下载 - {}", album.title);
@@ -385,6 +390,22 @@ impl Downloader {
         }
     }
 
+    fn get_cover_extension(&self, cover_url: &str) -> &str {
+        // 从URL中推断文件扩展名
+        if cover_url.contains(".jpg") || cover_url.contains(".jpeg") {
+            "jpg"
+        } else if cover_url.contains(".png") {
+            "png"
+        } else if cover_url.contains(".webp") {
+            "webp"
+        } else if cover_url.contains(".gif") {
+            "gif"
+        } else {
+            // 默认使用jpg
+            "jpg"
+        }
+    }
+
     async fn generate_readme(&self, album: &Album, album_dir: &PathBuf) -> Result<()> {
         let template_content = self.load_readme_template().unwrap_or_else(|_| self.get_default_readme_template());
         let readme_content = self.apply_template_variables(&template_content, album);
@@ -400,6 +421,29 @@ impl Downloader {
         let nfo_path = album_dir.join("album.nfo");
         fs::write(nfo_path, nfo_content)?;
         
+        Ok(())
+    }
+
+    async fn download_cover(&self, album: &Album, album_dir: &PathBuf) -> Result<()> {
+        if album.cover.is_empty() {
+            debug!("专辑 {} 没有封面URL，跳过下载", album.title);
+            return Ok(());
+        }
+
+        info!("下载封面: {}", album.title);
+
+        // 下载封面数据
+        let cover_data = self.client.download_cover(&album.cover, &album.id).await?;
+
+        // 根据URL或Content-Type推断文件扩展名
+        let extension = self.get_cover_extension(&album.cover);
+        let cover_filename = format!("cover.{}", extension);
+        let cover_path = album_dir.join(cover_filename);
+
+        // 保存封面文件
+        fs::write(cover_path, cover_data)?;
+        info!("封面下载完成: {}", album.title);
+
         Ok(())
     }
 

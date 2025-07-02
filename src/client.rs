@@ -529,4 +529,34 @@ impl DizzylabClient {
         
         Ok(None)
     }
+
+    pub async fn download_cover(&self, cover_url: &str, album_id: &str) -> Result<Vec<u8>> {
+        if cover_url.is_empty() {
+            return Err(anyhow!("封面URL为空"));
+        }
+
+        info!("下载封面: {} (专辑: {})", cover_url, album_id);
+
+        let response = self
+            .client
+            .get(cover_url)
+            .header("Referer", &format!("https://www.dizzylab.net/d/{}/", album_id))
+            .send()
+            .await?;
+
+        if self.debug {
+            debug!("=== HTTP 封面下载调试信息 ({}) ===", album_id);
+            debug!("封面URL: {}", cover_url);
+            debug!("状态码: {}", response.status());
+            debug!("响应头: {:#?}", response.headers());
+            debug!("=== HTTP 封面下载调试信息结束 ===");
+        }
+
+        if !response.status().is_success() {
+            return Err(anyhow!("下载封面失败，状态码: {}", response.status()));
+        }
+
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
 } 
