@@ -77,11 +77,6 @@ impl Downloader {
         // 创建专辑目录
         let album_dir = self.get_album_directory(album);
         
-        if self.config.behavior.skip_existing && album_dir.exists() {
-            info!("专辑目录已存在，跳过: {}", album.title);
-            return Ok(());
-        }
-
         info!("album_dir: {}", album_dir.display());
 
         fs::create_dir_all(&album_dir)?;
@@ -124,6 +119,45 @@ impl Downloader {
 
     async fn download_format(&self, album: &Album, format: &str, album_dir: &PathBuf) -> Result<()> {
         info!("下载格式: {} - {}", album.title, format);
+
+        // 检查是否需要跳过此格式
+        if self.config.behavior.skip_existing {
+            let target_dir = if self.config.download.flatten {
+                // 铺平模式：检查专辑目录中是否已有此格式的文件
+                album_dir.clone()
+            } else {
+                // 格式子文件夹模式：检查格式子文件夹是否存在且有文件
+                album_dir.join(format)
+            };
+
+            if target_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&target_dir) {
+                    let should_skip = if format == "gift" {
+                        entries.count() > 0
+                    } else {
+                        entries
+                            .filter_map(|entry| entry.ok())
+                            .any(|entry| {
+                                if let Some(file_name) = entry.file_name().to_str() {
+                                    let lower_name = file_name.to_lowercase();
+                                    lower_name.ends_with(".mp3") || 
+                                    lower_name.ends_with(".flac") || 
+                                    lower_name.ends_with(".wav") ||
+                                    lower_name.ends_with(".zip") ||
+                                    lower_name.ends_with(".rar")
+                                } else {
+                                    false
+                                }
+                            })
+                    };
+
+                    if should_skip {
+                        info!("格式 {} 已存在，跳过下载 - {}", format, album.title);
+                        return Ok(());
+                    }
+                }
+            }
+        }
 
         // 获取下载链接
         let download_links = self.client.get_download_links(&album.id, format).await?;
