@@ -13,6 +13,7 @@ config.toml
 
 # Downloaded content directory
 DizzySync/
+DizzySync*/
 
 # Operating system files
 .DS_Store
