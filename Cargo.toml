@@ -29,6 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zip = "0.6"
 unrar = "0.5"
 encoding_rs = "0.8"
+filetime = "0.2"
 
 # HTML解析
 scraper = "0.18"

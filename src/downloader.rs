@@ -10,6 +10,7 @@ use zip::ZipArchive;
 use unrar::Archive;
 use encoding_rs::GBK;
 use std::borrow::Cow;
+use filetime::{FileTime, set_file_times};
 
 #[derive(Debug, Clone, Copy)]
 enum ArchiveFormat {
@@ -238,8 +239,16 @@ impl Downloader {
                 fs::create_dir_all(parent)?;
             }
 
+            let zip_last_modified: zip::DateTime = file.last_modified();
+            
             let mut output_file = File::create(&output_path)?;
             std::io::copy(&mut file, &mut output_file)?;
+            
+            drop(output_file);
+            
+            if let Err(e) = self.set_file_timestamps(&output_path, zip_last_modified) {
+                warn!("设置文件时间戳失败 {}: {}", output_path.display(), e);
+            }
         }
 
         Ok(())
@@ -334,6 +343,9 @@ impl Downloader {
                     // 解压文件
                     let (data, next_archive) = header_archive.read()?;
                     fs::write(&output_path, data)?;
+                    
+                    // TODO: RAR时间戳同步暂未实现 - unrar crate不直接暴露时间戳字段
+                    // 未来版本可以添加RAR时间戳解析和设置功能
                     
                     archive = next_archive;
                 }
@@ -564,4 +576,31 @@ impl Downloader {
             album.id
         )
     }
+
+    fn set_file_timestamps(&self, file_path: &PathBuf, zip_datetime: zip::DateTime) -> Result<()> {
+        let year = zip_datetime.year() as i32;
+        let month = zip_datetime.month() as u32;
+        let day = zip_datetime.day() as u32;
+        let hour = zip_datetime.hour() as u32;
+        let minute = zip_datetime.minute() as u32;
+        let second = zip_datetime.second() as u32;
+
+        if let Some(naive_date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+            if let Some(naive_datetime) = naive_date.and_hms_opt(hour, minute, second) {
+                let unix_timestamp = naive_datetime.and_utc().timestamp();
+                
+                let filetime = FileTime::from_unix_time(unix_timestamp, 0);
+                
+                if let Err(e) = set_file_times(file_path, filetime, filetime) {
+                    return Err(anyhow!("设置文件时间戳失败: {}", e));
+                }
+                
+                debug!("已设置ZIP文件时间戳: {} -> {}", file_path.display(), naive_datetime);
+            }
+        }
+        
+        Ok(())
+    }
+
+
 } 
