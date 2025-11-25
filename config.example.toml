@@ -10,7 +10,7 @@ cookie = "sessionid=your_session_id_here; csrftoken=your_csrf_token_here"
 [download]
 # 要下载的格式，可选值：["128", "MP3", "FLAC", "gift"]
 # "128" - 128kbps MP3
-# "MP3" - 320kbps MP3  
+# "MP3" - 320kbps MP3
 # "FLAC" - 无损FLAC
 # "gift" - 特典内容
 formats = ["MP3", "FLAC"]
@@ -42,9 +42,9 @@ single_threaded = true
 
 # 文件生成选项
 generate_readme = true     # 生成README.md文件
-generate_nfo = true        # 生成NFO信息文件 
+generate_nfo = true        # 生成NFO信息文件
 
 # 仅下载元数据
 # true: 只下载专辑信息、封面、README和NFO文件，不下载音频文件
 # false: 下载完整的专辑内容（默认）
-metadata_only = false 
+metadata_only = false

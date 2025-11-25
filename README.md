@@ -115,7 +115,7 @@ directory_template = "{album}/@{label}"  # 默认: 专辑名/@厂牌名
 
 **支持的变量：**
 - `{album}` - 专辑名
-- `{label}` - 厂牌名  
+- `{label}` - 厂牌名
 - `{authors}` - 作者名
 - `{year}` - 当前年份
 - `{date}` - 当前日期 (YYYY-MM-DD)

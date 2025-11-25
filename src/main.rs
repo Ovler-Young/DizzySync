@@ -8,9 +8,9 @@ use client::DizzylabClient;
 use config::Config;
 use downloader::Downloader;
 use std::path::Path;
-use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, fmt};
 use std::path::PathBuf;
+use tracing::{error, info};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -119,11 +119,8 @@ async fn main() -> Result<()> {
     } else {
         EnvFilter::new("info")
     };
-    
-    fmt()
-        .with_env_filter(env_filter)
-        .with_target(false)
-        .init();
+
+    fmt().with_env_filter(env_filter).with_target(false).init();
 
     if matches.get_flag("debug") {
         info!("调试模式已启用，将显示所有HTTP响应");
@@ -144,49 +141,49 @@ async fn main() -> Result<()> {
 
     // 加载配置
     let mut config = Config::load_from_file(config_path)?;
-    
+
     // 如果命令行指定了debug，覆盖配置文件设置
     if matches.get_flag("debug") {
         config.behavior.debug = true;
     }
-    
+
     // 如果命令行指定了metadata-only，覆盖配置文件设置
     if matches.get_flag("metadata-only") {
         config.behavior.metadata_only = true;
         info!("启用仅元数据模式：只下载专辑信息，不下载音频文件");
     }
-    
+
     // 处理其他命令行参数覆盖配置
     if let Some(skip_existing) = matches.get_one::<bool>("skip-existing") {
         config.behavior.skip_existing = *skip_existing;
         info!("设置跳过已存在目录: {}", skip_existing);
     }
-    
+
     if let Some(single_threaded) = matches.get_one::<bool>("single-threaded") {
         config.behavior.single_threaded = *single_threaded;
         info!("设置单线程模式: {}", single_threaded);
     }
-    
+
     if let Some(generate_readme) = matches.get_one::<bool>("generate-readme") {
         config.behavior.generate_readme = *generate_readme;
         info!("设置README.md生成: {}", generate_readme);
     }
-    
+
     if let Some(generate_nfo) = matches.get_one::<bool>("generate-nfo") {
         config.behavior.generate_nfo = *generate_nfo;
         info!("设置NFO文件生成: {}", generate_nfo);
     }
-    
+
     if let Some(flatten) = matches.get_one::<bool>("flatten") {
         config.download.flatten = *flatten;
         info!("设置铺平文件结构: {}", flatten);
     }
-    
+
     if let Some(output_dir) = matches.get_one::<String>("output-dir") {
         config.paths.output_dir = PathBuf::from(output_dir);
         info!("设置输出目录: {}", output_dir);
     }
-    
+
     // 验证配置
     if config.user.cookie.is_empty() {
         error!("请在配置文件中设置你的cookie");
@@ -214,7 +211,7 @@ async fn main() -> Result<()> {
         // 获取用户的所有专辑
         client.get_user_albums(user_info.uid).await?
     };
-    
+
     if albums.is_empty() {
         info!("没有找到任何专辑");
         return Ok(());
@@ -226,10 +223,11 @@ async fn main() -> Result<()> {
     if matches.get_flag("dry-run") {
         info!("=== 专辑列表 ===");
         for (index, album) in albums.iter().enumerate() {
-            println!("{:3}. {} - {} ({})", 
-                index + 1, 
-                album.title, 
-                album.label, 
+            println!(
+                "{:3}. {} - {} ({})",
+                index + 1,
+                album.title,
+                album.label,
                 album.id
             );
         }
@@ -255,4 +253,4 @@ mod tests {
         assert!(config.download.formats.contains(&"MP3".to_string()));
         assert!(config.download.formats.contains(&"FLAC".to_string()));
     }
-} 
+}

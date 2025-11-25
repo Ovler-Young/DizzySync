@@ -44,4 +44,4 @@ path-clean = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 
 # 日期时间处理
-chrono = { version = "0.4", features = ["serde"] } 
+chrono = { version = "0.4", features = ["serde"] }

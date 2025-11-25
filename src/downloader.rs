@@ -2,15 +2,15 @@ use crate::client::{Album, DizzylabClient};
 use crate::config::Config;
 use anyhow::{anyhow, Result};
 use chrono::{self, Datelike};
+use encoding_rs::GBK;
+use filetime::{set_file_times, FileTime};
+use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
-use zip::ZipArchive;
 use unrar::Archive;
-use encoding_rs::GBK;
-use std::borrow::Cow;
-use filetime::{FileTime, set_file_times};
+use zip::ZipArchive;
 
 #[derive(Debug, Clone, Copy)]
 enum ArchiveFormat {
@@ -77,7 +77,7 @@ impl Downloader {
 
         // 创建专辑目录
         let album_dir = self.get_album_directory(album);
-        
+
         info!("album_dir: {}", album_dir.display());
 
         fs::create_dir_all(&album_dir)?;
@@ -118,14 +118,14 @@ impl Downloader {
         Ok(())
     }
 
-    async fn download_format(&self, album: &Album, format: &str, album_dir: &PathBuf) -> Result<()> {
+    async fn download_format(&self, album: &Album, format: &str, album_dir: &Path) -> Result<()> {
         info!("下载格式: {} - {}", album.title, format);
 
         // 检查是否需要跳过此格式
         if self.config.behavior.skip_existing {
             let target_dir = if self.config.download.flatten {
                 // 铺平模式：检查专辑目录中是否已有此格式的文件
-                album_dir.clone()
+                album_dir.to_path_buf()
             } else {
                 // 格式子文件夹模式：检查格式子文件夹是否存在且有文件
                 album_dir.join(format)
@@ -136,20 +136,18 @@ impl Downloader {
                     let should_skip = if format == "gift" {
                         entries.count() > 0
                     } else {
-                        entries
-                            .filter_map(|entry| entry.ok())
-                            .any(|entry| {
-                                if let Some(file_name) = entry.file_name().to_str() {
-                                    let lower_name = file_name.to_lowercase();
-                                    lower_name.ends_with(".mp3") || 
-                                    lower_name.ends_with(".flac") || 
-                                    lower_name.ends_with(".wav") ||
-                                    lower_name.ends_with(".zip") ||
-                                    lower_name.ends_with(".rar")
-                                } else {
-                                    false
-                                }
-                            })
+                        entries.filter_map(|entry| entry.ok()).any(|entry| {
+                            if let Some(file_name) = entry.file_name().to_str() {
+                                let lower_name = file_name.to_lowercase();
+                                lower_name.ends_with(".mp3")
+                                    || lower_name.ends_with(".flac")
+                                    || lower_name.ends_with(".wav")
+                                    || lower_name.ends_with(".zip")
+                                    || lower_name.ends_with(".rar")
+                            } else {
+                                false
+                            }
+                        })
                     };
 
                     if should_skip {
@@ -162,13 +160,13 @@ impl Downloader {
 
         // 获取下载链接
         let download_links = self.client.get_download_links(&album.id, format).await?;
-        
+
         // 检查是否有有效的下载链接（主要针对gift格式）
         if download_links.is_empty() {
             info!("专辑 {} 没有 {} 格式，跳过", album.title, format);
             return Ok(());
         }
-        
+
         let download_url = download_links
             .get(format)
             .ok_or_else(|| anyhow!("无法获取格式 {} 的下载链接", format))?;
@@ -202,14 +200,14 @@ impl Downloader {
         zip_data: &[u8],
         _album: &Album,
         format: &str,
-        album_dir: &PathBuf,
+        album_dir: &std::path::Path,
     ) -> Result<()> {
         let cursor = Cursor::new(zip_data);
         let mut archive = ZipArchive::new(cursor)?;
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
-            
+
             // 使用 name_raw() 获取原始字节，然后尝试解码
             let file_name_raw = file.name_raw();
             let file_name: Cow<str> = match std::str::from_utf8(file_name_raw) {
@@ -240,12 +238,12 @@ impl Downloader {
             }
 
             let zip_last_modified: zip::DateTime = file.last_modified();
-            
+
             let mut output_file = File::create(&output_path)?;
             std::io::copy(&mut file, &mut output_file)?;
-            
+
             drop(output_file);
-            
+
             if let Err(e) = self.set_file_timestamps(&output_path, zip_last_modified) {
                 warn!("设置文件时间戳失败 {}: {}", output_path.display(), e);
             }
@@ -282,26 +280,26 @@ impl Downloader {
         rar_data: &[u8],
         album: &Album,
         format: &str,
-        album_dir: &PathBuf,
+        album_dir: &std::path::Path,
     ) -> Result<()> {
         // 创建临时文件来存储RAR数据
         let temp_file_path = album_dir.join(format!("temp_{}.rar", album.id));
-        
+
         // 写入临时文件
         fs::write(&temp_file_path, rar_data)?;
-        
+
         // 使用unrar库解压
         let archive = Archive::new(&temp_file_path);
         let archive = archive.open_for_processing()?;
-        
+
         // 递归处理所有文件
         self.process_rar_archive(archive, format, album_dir)?;
-        
+
         // 删除临时文件
         if let Err(e) = fs::remove_file(&temp_file_path) {
             warn!("删除临时RAR文件失败: {}", e);
         }
-        
+
         Ok(())
     }
 
@@ -309,14 +307,14 @@ impl Downloader {
         &self,
         mut archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
         format: &str,
-        album_dir: &PathBuf,
+        album_dir: &std::path::Path,
     ) -> Result<()> {
         loop {
             match archive.read_header() {
                 Ok(Some(header_archive)) => {
                     let entry = header_archive.entry();
                     let filename = &entry.filename;
-                    
+
                     // 跳过目录
                     if entry.is_directory() {
                         archive = header_archive.skip()?;
@@ -343,10 +341,10 @@ impl Downloader {
                     // 解压文件
                     let (data, next_archive) = header_archive.read()?;
                     fs::write(&output_path, data)?;
-                    
+
                     // TODO: RAR时间戳同步暂未实现 - unrar crate不直接暴露时间戳字段
                     // 未来版本可以添加RAR时间戳解析和设置功能
-                    
+
                     archive = next_archive;
                 }
                 Ok(None) => {
@@ -359,7 +357,7 @@ impl Downloader {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -371,41 +369,47 @@ impl Downloader {
 
     fn generate_directory_name(&self, album: &Album) -> String {
         let template = &self.config.paths.directory_template;
-        
+
         // 获取当前年份（如果需要的话）
         let current_year = chrono::Utc::now().year().to_string();
         let current_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        
+
         // 替换模板变量
         let mut result = template.clone();
         result = result.replace("{album}", &self.sanitize_filename(&album.title));
         result = result.replace("{label}", &self.sanitize_filename(&album.label));
-        
+
         // 使用专辑的作者信息，如果没有则使用厂牌名
-        let authors = album.authors.as_ref()
-            .unwrap_or(&album.label);
+        let authors = album.authors.as_ref().unwrap_or(&album.label);
         result = result.replace("{authors}", &self.sanitize_filename(authors));
-        
+
         // 使用专辑的年份，如果没有则使用当前年份
-        let year = album.year.as_ref()
-            .unwrap_or(&current_year);
+        let year = album.year.as_ref().unwrap_or(&current_year);
         result = result.replace("{year}", year);
-        
+
         // 使用专辑的发布日期，如果没有则使用当前日期
-        let date = album.release_date.as_ref()
+        let date = album
+            .release_date
+            .as_ref()
             .map(|d| self.convert_chinese_date_to_iso(d))
             .unwrap_or(current_date);
         result = result.replace("{date}", &date);
-        
+
         result
     }
 
     fn convert_chinese_date_to_iso(&self, chinese_date: &str) -> String {
         // 将"2025年6月10日"格式转换为"2025-06-10"格式
-        if let Some(captures) = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日").unwrap().captures(chinese_date) {
-            if let (Some(year), Some(month), Some(day)) = (captures.get(1), captures.get(2), captures.get(3)) {
-                return format!("{}-{:02}-{:02}", 
-                    year.as_str(), 
+        if let Some(captures) = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
+            .unwrap()
+            .captures(chinese_date)
+        {
+            if let (Some(year), Some(month), Some(day)) =
+                (captures.get(1), captures.get(2), captures.get(3))
+            {
+                return format!(
+                    "{}-{:02}-{:02}",
+                    year.as_str(),
                     month.as_str().parse::<u32>().unwrap_or(1),
                     day.as_str().parse::<u32>().unwrap_or(1)
                 );
@@ -452,25 +456,27 @@ impl Downloader {
         }
     }
 
-    async fn generate_readme(&self, album: &Album, album_dir: &PathBuf) -> Result<()> {
-        let template_content = self.load_readme_template().unwrap_or_else(|_| self.get_default_readme_template());
+    async fn generate_readme(&self, album: &Album, album_dir: &std::path::Path) -> Result<()> {
+        let template_content = self
+            .load_readme_template()
+            .unwrap_or_else(|_| self.get_default_readme_template());
         let readme_content = self.apply_template_variables(&template_content, album);
-        
+
         let readme_path = album_dir.join("README.md");
         fs::write(readme_path, readme_content)?;
-        
+
         Ok(())
     }
 
-    async fn generate_nfo(&self, album: &Album, album_dir: &PathBuf) -> Result<()> {
+    async fn generate_nfo(&self, album: &Album, album_dir: &Path) -> Result<()> {
         let nfo_content = self.generate_nfo_content(album);
         let nfo_path = album_dir.join("album.nfo");
         fs::write(nfo_path, nfo_content)?;
-        
+
         Ok(())
     }
 
-    async fn download_cover(&self, album: &Album, album_dir: &PathBuf) -> Result<()> {
+    async fn download_cover(&self, album: &Album, album_dir: &Path) -> Result<()> {
         if album.cover.is_empty() {
             debug!("专辑 {} 没有封面URL，跳过下载", album.title);
             return Ok(());
@@ -483,7 +489,7 @@ impl Downloader {
 
         // 根据URL或Content-Type推断文件扩展名
         let extension = self.get_cover_extension(&album.cover);
-        let cover_filename = format!("cover.{}", extension);
+        let cover_filename = format!("cover.{extension}");
         let cover_path = album_dir.join(cover_filename);
 
         // 保存封面文件
@@ -500,9 +506,9 @@ impl Downloader {
     fn get_default_readme_template(&self) -> String {
         r#"# {album}
 
-**厂牌:** {label}  
-**发布日期:** {release_date}  
-**专辑ID:** {id}  
+**厂牌:** {label}
+**发布日期:** {release_date}
+**专辑ID:** {id}
 
 ## 描述
 
@@ -520,29 +526,39 @@ impl Downloader {
 ---
 
 *由 DizzySync 自动生成*
-"#.to_string()
+"#
+        .to_string()
     }
 
     fn apply_template_variables(&self, template: &str, album: &Album) -> String {
         let mut result = template.to_string();
-        
+
         result = result.replace("{album}", &album.title);
         result = result.replace("{label}", &album.label);
         result = result.replace("{id}", &album.id);
         result = result.replace("{cover}", &album.cover);
-        result = result.replace("{release_date}", 
-            album.release_date.as_ref().unwrap_or(&"未知".to_string()));
-        result = result.replace("{description}", 
-            album.description.as_ref().unwrap_or(&"暂无描述".to_string()));
+        result = result.replace(
+            "{release_date}",
+            album.release_date.as_ref().unwrap_or(&"未知".to_string()),
+        );
+        result = result.replace(
+            "{description}",
+            album
+                .description
+                .as_ref()
+                .unwrap_or(&"暂无描述".to_string()),
+        );
         result = result.replace("{tags}", &album.tags.join(", "));
-        result = result.replace("{authors}", 
-            album.authors.as_ref().unwrap_or(&album.label));
-        result = result.replace("{year}", 
-            album.year.as_ref().unwrap_or(&"未知".to_string()));
-        result = result.replace("{download_date}", 
-            &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string());
+        result = result.replace("{authors}", album.authors.as_ref().unwrap_or(&album.label));
+        result = result.replace("{year}", album.year.as_ref().unwrap_or(&"未知".to_string()));
+        result = result.replace(
+            "{download_date}",
+            &chrono::Utc::now()
+                .format("%Y-%m-%d %H:%M:%S UTC")
+                .to_string(),
+        );
         result = result.replace("{formats}", &self.config.download.formats.join(", "));
-        
+
         result
     }
 
@@ -566,18 +582,30 @@ impl Downloader {
 </album>"#,
             album.title,
             album.authors.as_ref().unwrap_or(&album.label),
-            album.tags.get(0).unwrap_or(&"Music".to_string()),
+            album.tags.first().unwrap_or(&"Music".to_string()),
             album.year.as_ref().unwrap_or(&"Unknown".to_string()),
-            album.release_date.as_ref().unwrap_or(&"Unknown".to_string()),
+            album
+                .release_date
+                .as_ref()
+                .unwrap_or(&"Unknown".to_string()),
             album.label,
             album.id,
             album.description.as_ref().unwrap_or(&"".to_string()),
-            album.tags.iter().map(|tag| format!("        <tag>{}</tag>", tag)).collect::<Vec<_>>().join("\n"),
+            album
+                .tags
+                .iter()
+                .map(|tag| format!("        <tag>{tag}</tag>"))
+                .collect::<Vec<_>>()
+                .join("\n"),
             album.id
         )
     }
 
-    fn set_file_timestamps(&self, file_path: &PathBuf, zip_datetime: zip::DateTime) -> Result<()> {
+    fn set_file_timestamps(
+        &self,
+        file_path: &std::path::Path,
+        zip_datetime: zip::DateTime,
+    ) -> Result<()> {
         let year = zip_datetime.year() as i32;
         let month = zip_datetime.month() as u32;
         let day = zip_datetime.day() as u32;
@@ -588,19 +616,21 @@ impl Downloader {
         if let Some(naive_date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
             if let Some(naive_datetime) = naive_date.and_hms_opt(hour, minute, second) {
                 let unix_timestamp = naive_datetime.and_utc().timestamp();
-                
+
                 let filetime = FileTime::from_unix_time(unix_timestamp, 0);
-                
+
                 if let Err(e) = set_file_times(file_path, filetime, filetime) {
                     return Err(anyhow!("设置文件时间戳失败: {}", e));
                 }
-                
-                debug!("已设置ZIP文件时间戳: {} -> {}", file_path.display(), naive_datetime);
+
+                debug!(
+                    "已设置ZIP文件时间戳: {} -> {}",
+                    file_path.display(),
+                    naive_datetime
+                );
             }
         }
-        
+
         Ok(())
     }
-
-
-} 
+}

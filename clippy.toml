@@ -1,0 +1,32 @@
+# Clippy configuration for DizzySync project
+
+# Set cognitive complexity threshold (valid field name)
+cognitive-complexity-threshold = 30
+
+# Maximum allowed size for arrays on the stack
+array-size-threshold = 512000
+
+# Maximum allowed number of single char bindings in scope
+single-char-binding-names-threshold = 4
+
+# Maximum allowed number of lines for a single function
+too-many-lines-threshold = 100
+
+# Maximum allowed size of a type in bytes
+trivial-copy-size-limit = 128
+
+# Maximum allowed number of arguments for a function
+too-many-arguments-threshold = 7
+
+# Maximum allowed number of variants for an enum
+enum-variant-name-threshold = 3
+
+# Enable verbose output
+verbose-bit-mask-threshold = 1
+
+# Test settings
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+# Additional settings for better error messages
+msrv = "1.70.0"

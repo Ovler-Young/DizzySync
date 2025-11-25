@@ -1,6 +1,6 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -91,8 +91,8 @@ impl Config {
     pub fn create_default_config(path: &str) -> Result<()> {
         let default_config = Config::default();
         default_config.save_to_file(path)?;
-        println!("已创建默认配置文件: {}", path);
+        println!("已创建默认配置文件: {path}");
         println!("请编辑配置文件，设置你的cookie等信息");
         Ok(())
     }
-} 
+}

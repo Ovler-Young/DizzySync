@@ -2,11 +2,11 @@
 
 ![专辑封面]({cover})
 
-**厂牌:** {label}  
-**发布日期:** {release_date}  
-**年份:** {year}  
-**作者:** {authors}  
-**专辑ID:** {id}  
+**厂牌:** {label}
+**发布日期:** {release_date}
+**年份:** {year}
+**作者:** {authors}
+**专辑ID:** {id}
 
 ## 描述
 
@@ -24,5 +24,5 @@
 
 ---
 
-*此文件由 DizzySync 自动生成*  
-*项目地址：https://github.com/Ovler-Young/dizzysync* 
+*此文件由 DizzySync 自动生成*
+*项目地址：https://github.com/Ovler-Young/dizzysync*
