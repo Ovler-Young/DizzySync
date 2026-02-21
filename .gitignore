@@ -32,3 +32,9 @@ Thumbs.db
 TODO.md
 
 sources/*
+
+# gui
+.svelte-kit
+node_modules
+build
+src-tauri
