@@ -27,15 +27,27 @@ pub struct DiscInfo {
     pub labelid: Option<serde_json::Value>,
     pub cover: String,
     #[serde(default)]
+    pub labelcover: Option<String>,
+    #[serde(default)]
+    pub label_description: Option<String>,
+    #[serde(default)]
     pub disc_description: Option<String>,
     #[serde(default)]
     pub disc_description_2: Option<String>,
     #[serde(default)]
     pub release_date: Option<String>,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub price: Option<serde_json::Value>,
     #[serde(default)]
     pub hasgift: bool,
+    #[serde(default)]
+    pub ispreselling: bool,
+    #[serde(default)]
+    pub onsell: bool,
+    #[serde(default)]
+    pub onlyhavegift: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
     #[serde(default)]
     pub tracks: Vec<Track>,
 }
@@ -45,6 +57,8 @@ pub struct Track {
     pub id: String,
     pub discid: String,
     pub title: String,
+    #[serde(default)]
+    pub album: Option<String>,
     #[serde(default)]
     pub authers: String, // note: API typo preserved
     #[serde(default)]
