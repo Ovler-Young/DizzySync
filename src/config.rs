@@ -19,7 +19,6 @@ pub struct UserConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadConfig {
     pub formats: Vec<String>, // "128", "320", "FLAC", "gift"
-    pub flatten: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +64,6 @@ impl Default for Config {
             },
             download: DownloadConfig {
                 formats: vec!["320".to_string(), "FLAC".to_string()],
-                flatten: false,
             },
             paths: PathsConfig {
                 output_dir: PathBuf::from("./DizzySync"),

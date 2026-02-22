@@ -94,15 +94,6 @@ async fn main() -> Result<()> {
                 .value_parser(clap::value_parser!(bool)),
         )
         .arg(
-            Arg::new("flatten")
-                .long("flatten")
-                .value_name("[BOOL]")
-                .help("铺平文件结构，不创建格式子文件夹 [默认: true]")
-                .num_args(0..=1)
-                .default_missing_value("true")
-                .value_parser(clap::value_parser!(bool)),
-        )
-        .arg(
             Arg::new("output-dir")
                 .long("output-dir")
                 .short('o')
@@ -166,11 +157,6 @@ async fn main() -> Result<()> {
     if let Some(generate_nfo) = matches.get_one::<bool>("generate-nfo") {
         config.behavior.generate_nfo = *generate_nfo;
         info!("设置NFO文件生成: {}", generate_nfo);
-    }
-
-    if let Some(flatten) = matches.get_one::<bool>("flatten") {
-        config.download.flatten = *flatten;
-        info!("设置铺平文件结构: {}", flatten);
     }
 
     if let Some(output_dir) = matches.get_one::<String>("output-dir") {

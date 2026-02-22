@@ -158,11 +158,7 @@ impl Downloader {
         format: &str,
         album_dir: &Path,
     ) -> Result<()> {
-        let target_dir = if self.config.download.flatten {
-            album_dir.to_path_buf()
-        } else {
-            album_dir.join(format)
-        };
+        let target_dir = album_dir.to_path_buf();
 
         if self.config.behavior.skip_existing && target_dir.exists() {
             if let Ok(entries) = fs::read_dir(&target_dir) {
@@ -222,11 +218,7 @@ impl Downloader {
             return Ok(());
         }
 
-        let target_dir = if self.config.download.flatten {
-            album_dir.to_path_buf()
-        } else {
-            album_dir.join(format)
-        };
+        let target_dir = album_dir.to_path_buf();
 
         // Skip if directory already has audio files
         if self.config.behavior.skip_existing && target_dir.exists() {
@@ -310,11 +302,7 @@ impl Downloader {
         }
 
         // Check skip_existing for gift
-        let target_dir = if self.config.download.flatten {
-            album_dir.to_path_buf()
-        } else {
-            album_dir.join("gift")
-        };
+        let target_dir = album_dir.join("gift");
 
         if self.config.behavior.skip_existing && target_dir.exists() {
             if let Ok(entries) = fs::read_dir(&target_dir) {
@@ -612,12 +600,12 @@ impl Downloader {
 
             debug!("解压文件: {}", file_name);
 
-            let output_path = if self.config.download.flatten {
-                album_dir.join(&*file_name)
-            } else {
+            let output_path = if format == "gift" {
                 let format_dir = album_dir.join(format);
                 fs::create_dir_all(&format_dir)?;
                 format_dir.join(&*file_name)
+            } else {
+                album_dir.join(&*file_name)
             };
 
             if let Some(parent) = output_path.parent() {
@@ -697,12 +685,12 @@ impl Downloader {
 
                     debug!("解压RAR文件: {}", filename.display());
 
-                    let output_path = if self.config.download.flatten {
-                        album_dir.join(filename)
-                    } else {
+                    let output_path = if format == "gift" {
                         let format_dir = album_dir.join(format);
                         fs::create_dir_all(&format_dir)?;
                         format_dir.join(filename)
+                    } else {
+                        album_dir.join(filename)
                     };
 
                     if let Some(parent) = output_path.parent() {

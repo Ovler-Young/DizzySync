@@ -5,7 +5,6 @@
 ## 特性
 
 - 🎵 自动同步所有已购买的专辑
-- 📁 支持多种文件组织方式（铺平/子文件夹）
 - 🎛️ 支持多种音质格式（128kbps/320kbps MP3/FLAC/特典）
 - ⚡ 单线程下载，避免给服务器造成压力
 - 🔧 基于TOML的简单配置
@@ -78,7 +77,6 @@ sessionid=your_session_id_here; csrftoken=your_csrf_token_here
 ./dizzysync --single-threaded                  # 启用单线程模式（默认true）
 ./dizzysync --single-threaded false            # 禁用单线程模式
 ./dizzysync --generate-readme false --generate-nfo false  # 不生成README和NFO文件
-./dizzysync --flatten                          # 铺平文件结构（默认true）
 ./dizzysync -o ./MyMusic                       # 指定输出目录
 ./dizzysync --output-dir /path/to/music        # 指定输出目录（完整格式）
 ```
@@ -93,11 +91,11 @@ sessionid=your_session_id_here; csrftoken=your_csrf_token_here
 
 ```toml
 [download]
-formats = ["MP3", "FLAC"]  # 可选: "128", "MP3", "FLAC", "gift"
+formats = ["320", "FLAC"]  # 可选: "128", "320", "FLAC", "gift"
 ```
 
 - `"128"` - 128kbps MP3 (较小文件)
-- `"MP3"` - 320kbps MP3 (高质量)
+- `"320"` - 320kbps MP3 (高质量)
 - `"FLAC"` - 无损FLAC (最高质量)
 - `"gift"` - 特典内容
 
@@ -120,37 +118,24 @@ directory_template = "{album}/@{label}"  # 默认: 专辑名/@厂牌名
 - `{year}` - 当前年份
 - `{date}` - 当前日期 (YYYY-MM-DD)
 
-#### Flatten选项
+#### 文件结构
 
-```toml
-[download]
-flatten = false  # 控制是否创建格式子文件夹
+音频文件（128/320/FLAC）直接放在专辑目录下，特典内容放在 `gift/` 子目录中：
+
 ```
-
-- `false` (默认): 创建格式子文件夹
-  ```
-  DizzySync/
-  ├─ Example Album/
-  │  └─ @Example Label/
-  │     ├─ MP3/
-  │     │  ├─ 01 Track One.mp3
-  │     │  └─ 02 Track Two.mp3
-  │     └─ FLAC/
-  │        ├─ 01 Track One.flac
-  │        └─ 02 Track Two.flac
-  ```
-
-- `true`: 铺平，不创建格式子文件夹
-  ```
-  DizzySync/
-  └─ Example Album/
-     └─ @Example Label/
-        ├─ 01 Track One.mp3
-        ├─ 02 Track Two.mp3
-        ├─ 01 Track One.flac
-        └─ 02 Track Two.flac
-  ```
-
+DizzySync/
+└─ Example Album/
+   └─ @Example Label/
+      ├─ 01 Track One.mp3
+      ├─ 02 Track Two.mp3
+      ├─ 01 Track One.flac
+      ├─ 02 Track Two.flac
+      ├─ gift/
+      │  └─ bonus.zip（解压内容）
+      ├─ cover.jpg
+      ├─ README.md
+      └─ album.nfo
+```
 
 ### 元数据模式
 
@@ -211,7 +196,6 @@ metadata_only = true  # 仅下载元数据，不下载音频文件
 - `--generate-nfo [true/false]` - 生成NFO文件（省略值时默认为true）
 
 #### 文件组织
-- `--flatten [true/false]` - 铺平文件结构，不创建格式子文件夹（省略值时默认为true）
 - `-o DIR`, `--output-dir DIR` - 指定输出目录
 
 #### 其他
