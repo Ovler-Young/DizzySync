@@ -1,6 +1,8 @@
+mod archive;
 mod client;
 mod config;
 mod downloader;
+mod metadata;
 
 use anyhow::Result;
 use clap::{Arg, Command};
