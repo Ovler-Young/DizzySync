@@ -30,19 +30,16 @@ impl DizzylabClient {
         Ok(Self { client, debug })
     }
 
-    /// Download raw bytes from a CDN URL (no special headers needed)
-    pub async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        let (bytes, _) = self.download_bytes_with_last_modified(url).await?;
-        Ok(bytes)
-    }
-
-    /// Download raw bytes from a CDN URL and return the `Last-Modified` header value alongside.
-    pub async fn download_bytes_with_last_modified(
+    /// Stream a CDN URL directly to a file on disk. Returns the `Last-Modified` header value.
+    pub async fn stream_to_file(
         &self,
         url: &str,
-    ) -> Result<(Vec<u8>, Option<String>)> {
+        dest: &std::path::Path,
+    ) -> Result<Option<String>> {
+        use tokio::io::AsyncWriteExt;
+
         debug!("下载: {}", url);
-        let response = self.client.get(url).send().await?;
+        let mut response = self.client.get(url).send().await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("下载失败，状态码: {}", response.status()));
@@ -54,15 +51,25 @@ impl DizzylabClient {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        let bytes = response.bytes().await?;
-        Ok((bytes.to_vec(), last_modified))
+        let mut file = tokio::fs::File::create(dest).await?;
+        while let Some(chunk) = response.chunk().await? {
+            file.write_all(&chunk).await?;
+        }
+        file.flush().await?;
+
+        Ok(last_modified)
     }
 
-    /// Download an archive using the web session cookie + Referer header
-    pub async fn download_file(&self, url: &str, album_id: &str) -> Result<Vec<u8>> {
-        use anyhow::anyhow;
+    /// Stream a web session download (with Referer header) directly to a file on disk.
+    pub async fn stream_file_to_path(
+        &self,
+        url: &str,
+        album_id: &str,
+        dest: &std::path::Path,
+    ) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
 
-        let response = self
+        let mut response = self
             .client
             .get(url)
             .header(
@@ -78,18 +85,24 @@ impl DizzylabClient {
 
         if response.status().is_redirection() {
             if let Some(location) = response.headers().get("location") {
-                let redirect_url = location.to_str()?;
+                let redirect_url = location.to_str()?.to_string();
                 debug!("重定向到: {}", redirect_url);
-                return self.download_bytes(redirect_url).await;
+                self.stream_to_file(&redirect_url, dest).await?;
+                return Ok(());
             }
         }
 
         if !response.status().is_success() {
-            return Err(anyhow!("下载失败，状态码: {}", response.status()));
+            return Err(anyhow::anyhow!("下载失败，状态码: {}", response.status()));
         }
 
-        let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+        let mut file = tokio::fs::File::create(dest).await?;
+        while let Some(chunk) = response.chunk().await? {
+            file.write_all(&chunk).await?;
+        }
+        file.flush().await?;
+
+        Ok(())
     }
 
     /// HEAD request to any CDN URL — returns Last-Modified and ETag without downloading the body.

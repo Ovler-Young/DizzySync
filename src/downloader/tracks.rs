@@ -3,8 +3,6 @@ use crate::archive::filetime_from_http_date;
 use crate::types::DiscInfo;
 use anyhow::Result;
 use filetime::set_file_times;
-use std::fs::File;
-use std::io::Write;
 use std::path::Path;
 use tracing::{debug, info, warn};
 
@@ -110,22 +108,14 @@ impl Downloader {
                 }
             }
 
-            // Download the file.
-            let (data, last_modified) = match self
-                .client
-                .download_bytes_with_last_modified(&cdn_url)
-                .await
-            {
-                Ok(d) => d,
+            // Stream directly to the destination file (no in-memory buffer).
+            let last_modified = match self.client.stream_to_file(&cdn_url, &file_path).await {
+                Ok(lm) => lm,
                 Err(e) => {
                     warn!("下载曲目 {} 失败: {}", track.title, e);
                     continue;
                 }
             };
-
-            let mut file = File::create(&file_path)?;
-            file.write_all(&data)?;
-            drop(file);
 
             if let Some(date_str) = &last_modified {
                 if let Some(ft) = filetime_from_http_date(date_str) {

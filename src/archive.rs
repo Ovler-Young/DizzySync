@@ -3,7 +3,7 @@ use encoding_rs::GBK;
 use filetime::{set_file_times, FileTime};
 use std::borrow::Cow;
 use std::fs::{self, File};
-use std::io::Cursor;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use tracing::{debug, error, warn};
 use unrar::Archive;
@@ -35,17 +35,29 @@ pub fn detect_archive_format(data: &[u8]) -> ArchiveFormat {
     ArchiveFormat::Unknown
 }
 
-pub fn extract_zip_file(zip_data: &[u8], format: &str, album_dir: &Path) -> Result<()> {
-    let cursor = Cursor::new(zip_data);
-    let mut archive = ZipArchive::new(cursor)?;
+/// Detect archive format by reading the first few bytes of a file on disk.
+pub fn detect_archive_format_from_path(path: &Path) -> ArchiveFormat {
+    let Ok(mut file) = File::open(path) else {
+        return ArchiveFormat::Unknown;
+    };
+    let mut buf = [0u8; 8];
+    let n = file.read(&mut buf).unwrap_or(0);
+    detect_archive_format(&buf[..n])
+}
+
+/// Extract a ZIP archive from a file path on disk.
+pub fn extract_zip_from_path(zip_path: &Path, format: &str, album_dir: &Path) -> Result<()> {
+    let file = File::open(zip_path)?;
+    let reader = BufReader::new(file);
+    let mut archive = ZipArchive::new(reader)?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
+        let mut entry = archive.by_index(i)?;
 
-        let file_name_raw = file.name_raw();
-        let file_name: Cow<str> = match std::str::from_utf8(file_name_raw) {
-            Ok(name) => Cow::Borrowed(name),
-            Err(_) => GBK.decode(file_name_raw).0,
+        let file_name_raw = entry.name_raw().to_vec();
+        let file_name: Cow<str> = match std::str::from_utf8(&file_name_raw) {
+            Ok(name) => Cow::Owned(name.to_string()),
+            Err(_) => Cow::Owned(GBK.decode(&file_name_raw).0.into_owned()),
         };
 
         if file_name.ends_with('/') {
@@ -66,9 +78,9 @@ pub fn extract_zip_file(zip_data: &[u8], format: &str, album_dir: &Path) -> Resu
             fs::create_dir_all(parent)?;
         }
 
-        let zip_last_modified = file.last_modified();
+        let zip_last_modified = entry.last_modified();
         let mut output_file = File::create(&output_path)?;
-        std::io::copy(&mut file, &mut output_file)?;
+        std::io::copy(&mut entry, &mut output_file)?;
         drop(output_file);
 
         if let Some(dt) = zip_last_modified {
@@ -81,25 +93,11 @@ pub fn extract_zip_file(zip_data: &[u8], format: &str, album_dir: &Path) -> Resu
     Ok(())
 }
 
-pub fn extract_rar_file(
-    rar_data: &[u8],
-    album_id: &str,
-    format: &str,
-    album_dir: &Path,
-) -> Result<()> {
-    let temp_file_path = album_dir.join(format!("temp_{album_id}.rar"));
-    fs::write(&temp_file_path, rar_data)?;
-
-    let archive = Archive::new(&temp_file_path);
+/// Extract a RAR archive from a file path on disk.
+pub fn extract_rar_from_path(rar_path: &Path, format: &str, album_dir: &Path) -> Result<()> {
+    let archive = Archive::new(rar_path);
     let archive = archive.open_for_processing()?;
-
-    process_rar_archive(archive, format, album_dir)?;
-
-    if let Err(e) = fs::remove_file(&temp_file_path) {
-        warn!("删除临时RAR文件失败: {}", e);
-    }
-
-    Ok(())
+    process_rar_archive(archive, format, album_dir)
 }
 
 fn process_rar_archive(
@@ -194,7 +192,7 @@ pub fn set_file_timestamps(file_path: &Path, zip_datetime: zip::DateTime) -> Res
             let filetime = FileTime::from_unix_time(unix_timestamp, 0);
 
             if let Err(e) = set_file_times(file_path, filetime, filetime) {
-                return Err(anyhow!("设置文件时间戳失败: {}", e));
+                return Err(anyhow!("设置文件时间戳失败: {e}"));
             }
 
             debug!(

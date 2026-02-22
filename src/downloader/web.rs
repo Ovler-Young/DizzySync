@@ -2,8 +2,7 @@ use super::Downloader;
 use crate::archive::{self, ArchiveFormat};
 use crate::types::DiscInfo;
 use anyhow::{anyhow, Result};
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
@@ -43,22 +42,34 @@ impl Downloader {
             .get_web_format_download_link(&disc_info.id, format)
             .await?;
 
-        info!("下载格式 {} (web) - {}", format, disc_info.title);
-        let file_data = self
-            .client
-            .download_file(&download_url, &disc_info.id)
+        fs::create_dir_all(&target_dir)?;
+        let archive_path = target_dir.join(format!("{}.zip", format.to_lowercase()));
+
+        info!(
+            "下载格式 {} (web) → {} - {}",
+            format,
+            archive_path.display(),
+            disc_info.title
+        );
+        self.client
+            .stream_file_to_path(&download_url, &disc_info.id, &archive_path)
             .await?;
 
-        match archive::detect_archive_format(&file_data) {
-            ArchiveFormat::Zip => archive::extract_zip_file(&file_data, format, album_dir)?,
+        match archive::detect_archive_format_from_path(&archive_path) {
+            ArchiveFormat::Zip => {
+                archive::extract_zip_from_path(&archive_path, format, album_dir)?;
+                if let Err(e) = fs::remove_file(&archive_path) {
+                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                }
+            }
             ArchiveFormat::Rar => {
-                archive::extract_rar_file(&file_data, &disc_info.id, format, album_dir)?
+                archive::extract_rar_from_path(&archive_path, format, album_dir)?;
+                if let Err(e) = fs::remove_file(&archive_path) {
+                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                }
             }
             ArchiveFormat::Unknown => {
-                fs::create_dir_all(&target_dir)?;
-                let file_path = target_dir.join(format!("{}_{}.bin", disc_info.id, format));
-                let mut file = File::create(file_path)?;
-                file.write_all(&file_data)?;
+                // Leave the file as-is (unknown binary payload).
             }
         }
 
@@ -91,21 +102,33 @@ impl Downloader {
             .get("gift")
             .ok_or_else(|| anyhow!("无法获取 gift 下载链接"))?;
 
-        let file_data = self
-            .client
-            .download_file(download_url, &disc_info.id)
+        fs::create_dir_all(album_dir)?;
+        let archive_path = album_dir.join("gift.zip");
+
+        info!(
+            "下载 gift → {} - {}",
+            archive_path.display(),
+            disc_info.title
+        );
+        self.client
+            .stream_file_to_path(download_url, &disc_info.id, &archive_path)
             .await?;
 
-        match archive::detect_archive_format(&file_data) {
-            ArchiveFormat::Zip => archive::extract_zip_file(&file_data, "gift", album_dir)?,
+        match archive::detect_archive_format_from_path(&archive_path) {
+            ArchiveFormat::Zip => {
+                archive::extract_zip_from_path(&archive_path, "gift", album_dir)?;
+                if let Err(e) = fs::remove_file(&archive_path) {
+                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                }
+            }
             ArchiveFormat::Rar => {
-                archive::extract_rar_file(&file_data, &disc_info.id, "gift", album_dir)?
+                archive::extract_rar_from_path(&archive_path, "gift", album_dir)?;
+                if let Err(e) = fs::remove_file(&archive_path) {
+                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                }
             }
             ArchiveFormat::Unknown => {
-                fs::create_dir_all(&target_dir)?;
-                let file_path = target_dir.join(format!("gift_{}", disc_info.id));
-                let mut file = File::create(file_path)?;
-                file.write_all(&file_data)?;
+                // Leave the file as-is (unknown binary payload).
             }
         }
 

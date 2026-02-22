@@ -71,9 +71,7 @@ impl DizzylabClient {
         }
 
         Err(anyhow!(
-            "无法从页面中找到格式 {} 的下载链接 (专辑: {})",
-            format,
-            album_id
+            "无法从页面中找到格式 {format} 的下载链接 (专辑: {album_id})"
         ))
     }
 }
