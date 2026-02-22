@@ -7,7 +7,7 @@ authors = ["去离子水 <ovlertheyoung@gmail.com>"]
 
 [dependencies]
 # HTTP客户端
-reqwest = { version = "0.11", features = ["json", "cookies"] }
+reqwest = { version = "0.13", features = ["json", "cookies", "form"] }
 
 # OpenSSL 静态编译（消除跨平台系统依赖，CI 跨编译必需）
 openssl = { version = "0.10", features = ["vendored"] }
@@ -17,12 +17,12 @@ tokio = { version = "1.0", features = ["full"] }
 
 # 序列化和配置解析
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
+toml = "1.0"
 serde_json = "1.0"
 
 # 错误处理
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # 日志
 tracing = "0.1"
@@ -35,7 +35,7 @@ encoding_rs = "0.8"
 filetime = "0.2"
 
 # HTML解析
-scraper = "0.18"
+scraper = "0.25"
 
 # 正则表达式
 regex = "1.10"
