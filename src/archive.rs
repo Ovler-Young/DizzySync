@@ -71,8 +71,10 @@ pub fn extract_zip_file(zip_data: &[u8], format: &str, album_dir: &Path) -> Resu
         std::io::copy(&mut file, &mut output_file)?;
         drop(output_file);
 
-        if let Err(e) = set_file_timestamps(&output_path, zip_last_modified) {
-            warn!("设置文件时间戳失败 {}: {}", output_path.display(), e);
+        if let Some(dt) = zip_last_modified {
+            if let Err(e) = set_file_timestamps(&output_path, dt) {
+                warn!("设置文件时间戳失败 {}: {}", output_path.display(), e);
+            }
         }
     }
 
