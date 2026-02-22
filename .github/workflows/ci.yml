@@ -15,12 +15,16 @@ jobs:
   check:
     name: Check (fmt / clippy / test)
     runs-on: ubuntu-latest
+    env:
+      OPENSSL_NO_VENDOR: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install system OpenSSL
+        run: sudo apt-get update -q && sudo apt-get install -y libssl-dev pkg-config
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Prepare config for tests
@@ -39,6 +43,7 @@ jobs:
               target: x86_64-unknown-linux-gnu,
               os: ubuntu-latest,
               artifact: dizzysync,
+              system_ssl: true,
             }
           - {
               target: x86_64-unknown-linux-musl,
@@ -97,6 +102,10 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      - name: Install system OpenSSL (native Linux)
+        if: matrix.system_ssl == true
+        run: sudo apt-get update -q && sudo apt-get install -y libssl-dev pkg-config
+
       - name: Install musl-tools
         if: matrix.musl == true
         run: sudo apt-get install -y musl-tools
@@ -108,6 +117,8 @@ jobs:
           tool: cross
 
       - name: Build
+        env:
+          OPENSSL_NO_VENDOR: ${{ matrix.system_ssl == true && '1' || '0' }}
         run: ${{ matrix.use_cross == true && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
