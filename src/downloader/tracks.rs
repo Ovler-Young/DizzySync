@@ -1,5 +1,5 @@
 use super::Downloader;
-use crate::client::DiscInfo;
+use crate::types::DiscInfo;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Write;

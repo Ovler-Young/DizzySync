@@ -1,6 +1,6 @@
 use super::Downloader;
 use crate::archive::{self, ArchiveFormat};
-use crate::client::DiscInfo;
+use crate::types::DiscInfo;
 use anyhow::{anyhow, Result};
 use std::fs::{self, File};
 use std::io::Write;

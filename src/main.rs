@@ -3,6 +3,7 @@ mod client;
 mod config;
 mod downloader;
 mod metadata;
+mod types;
 
 use anyhow::Result;
 use clap::{Arg, Command};

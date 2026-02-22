@@ -1,4 +1,4 @@
-use crate::client::DiscInfo;
+use crate::types::DiscInfo;
 use anyhow::Result;
 use std::fs;
 use std::path::Path;

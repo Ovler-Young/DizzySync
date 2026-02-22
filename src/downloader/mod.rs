@@ -1,9 +1,10 @@
 mod tracks;
 mod web;
 
-use crate::client::{DiscInfo, DiscListItem, DizzylabClient};
+use crate::client::DizzylabClient;
 use crate::config::Config;
 use crate::metadata;
+use crate::types::{DiscInfo, DiscListItem};
 use anyhow::Result;
 use chrono::{self, Datelike};
 use std::fs;
