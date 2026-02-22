@@ -39,10 +39,8 @@ jobs:
           - { target: aarch64-unknown-linux-gnu,     os: ubuntu-latest,  artifact: dizzysync,     use_cross: true }
           - { target: aarch64-unknown-linux-musl,    os: ubuntu-latest,  artifact: dizzysync,     use_cross: true }
           - { target: armv7-unknown-linux-gnueabihf, os: ubuntu-latest,  artifact: dizzysync,     use_cross: true }
-          - { target: i686-unknown-linux-gnu,        os: ubuntu-latest,  artifact: dizzysync,     use_cross: true }
           # ── Windows ────────────────────────────────────────────────────────
           - { target: x86_64-pc-windows-msvc,        os: windows-latest, artifact: dizzysync.exe }
-          - { target: i686-pc-windows-msvc,          os: windows-latest, artifact: dizzysync.exe }
           - { target: aarch64-pc-windows-msvc,       os: windows-latest, artifact: dizzysync.exe }
           # ── macOS ──────────────────────────────────────────────────────────
           - { target: x86_64-apple-darwin,           os: macos-latest,   artifact: dizzysync }
