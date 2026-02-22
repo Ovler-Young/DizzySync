@@ -32,6 +32,8 @@ pub struct PathsConfig {
 pub struct BehaviorConfig {
     pub skip_existing: bool,
     pub single_threaded: bool,
+    #[serde(default = "default_one")]
+    pub max_concurrent_albums: usize,
     #[serde(default = "default_true")]
     pub generate_readme: bool,
     #[serde(default = "default_true")]
@@ -40,6 +42,10 @@ pub struct BehaviorConfig {
     pub debug: bool,
     #[serde(default = "default_false")]
     pub metadata_only: bool,
+}
+
+fn default_one() -> usize {
+    1
 }
 
 fn default_true() -> bool {
@@ -68,6 +74,7 @@ impl Default for Config {
             behavior: BehaviorConfig {
                 skip_existing: true,
                 single_threaded: true,
+                max_concurrent_albums: 1,
                 generate_readme: true,
                 generate_nfo: true,
                 debug: false,

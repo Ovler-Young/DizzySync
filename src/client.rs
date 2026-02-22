@@ -88,6 +88,7 @@ struct TrackDownloadInfo {
     url: String,
 }
 
+#[derive(Clone)]
 pub struct DizzylabClient {
     client: Client,
     debug: bool,

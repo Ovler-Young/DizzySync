@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use unrar::Archive;
 use zip::ZipArchive;
@@ -19,6 +20,7 @@ enum ArchiveFormat {
     Unknown,
 }
 
+#[derive(Clone)]
 pub struct Downloader {
     client: DizzylabClient,
     config: Config,
@@ -40,31 +42,54 @@ impl Downloader {
 
         fs::create_dir_all(&self.config.paths.output_dir)?;
 
-        for (index, disc_item) in albums.iter().enumerate() {
-            info!(
-                "处理专辑 {}/{}: {} - {}",
-                index + 1,
-                total_albums,
-                disc_item.title,
-                disc_item.label
-            );
+        let concurrency = if self.config.behavior.single_threaded {
+            1
+        } else {
+            self.config.behavior.max_concurrent_albums.max(1)
+        };
 
-            // Fetch full disc info including tracks
-            let disc_info = match self.client.get_disc_info(&disc_item.id, &self.token).await {
-                Ok(info) => info,
-                Err(e) => {
-                    error!("获取专辑 {} 详情失败: {}", disc_item.id, e);
-                    continue;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
+        let this = Arc::new(self.clone());
+        let mut join_set = tokio::task::JoinSet::new();
+
+        for (index, disc_item) in albums.into_iter().enumerate() {
+            let sem = semaphore.clone();
+            let downloader = this.clone();
+            join_set.spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                info!(
+                    "处理专辑 {}/{}: {} - {}",
+                    index + 1,
+                    total_albums,
+                    disc_item.title,
+                    disc_item.label
+                );
+
+                let disc_info = match downloader
+                    .client
+                    .get_disc_info(&disc_item.id, &downloader.token)
+                    .await
+                {
+                    Ok(info) => info,
+                    Err(e) => {
+                        error!("获取专辑 {} 详情失败: {}", disc_item.id, e);
+                        return;
+                    }
+                };
+
+                if let Err(e) = downloader.download_album(&disc_info).await {
+                    error!("下载专辑 {} 失败: {}", disc_info.id, e);
                 }
-            };
 
-            if let Err(e) = self.download_album(&disc_info).await {
-                error!("下载专辑 {} 失败: {}", disc_info.id, e);
-                continue;
-            }
+                if downloader.config.behavior.single_threaded {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                }
+            });
+        }
 
-            if self.config.behavior.single_threaded {
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        while let Some(res) = join_set.join_next().await {
+            if let Err(e) = res {
+                error!("任务异常: {}", e);
             }
         }
 

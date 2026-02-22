@@ -36,8 +36,12 @@ directory_template = "{album}/@{label}"
 # 跳过已存在的目录
 skip_existing = true
 
-# 单线程下载（推荐保持true以避免给服务器造成压力）
+# 单线程下载（若为true，会在单线程基础上，每下载一个专辑后暂停2秒）
+# 若设为false，则由 max_concurrent_albums 控制同时下载的专辑数
 single_threaded = true
+
+# 同时下载的最大专辑数（仅在 single_threaded = false 时生效）
+max_concurrent_albums = 1
 
 # 文件生成选项
 generate_readme = true     # 生成README.md文件
