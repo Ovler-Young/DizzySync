@@ -146,6 +146,38 @@ fn process_rar_archive(
     Ok(())
 }
 
+/// Parse an HTTP `Last-Modified` header value (RFC 2822) into a FileTime.
+/// Example input: `"Fri, 20 Feb 2026 02:15:26 GMT"`
+pub fn filetime_from_http_date(date_str: &str) -> Option<FileTime> {
+    let dt = chrono::DateTime::parse_from_rfc2822(date_str).ok()?;
+    Some(FileTime::from_unix_time(dt.timestamp(), 0))
+}
+
+/// Parse an album release_date string into a FileTime suitable for `set_file_times`.
+/// Supports "YYYY年M月D日" and "YYYY-MM-DD" / "YYYY/MM/DD" formats.
+pub fn filetime_from_release_date(date_str: &str) -> Option<FileTime> {
+    use chrono::NaiveDate;
+    // "YYYY年M月D日"
+    let re_cn = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日").unwrap();
+    if let Some(caps) = re_cn.captures(date_str) {
+        let y: i32 = caps[1].parse().ok()?;
+        let m: u32 = caps[2].parse().ok()?;
+        let d: u32 = caps[3].parse().ok()?;
+        let dt = NaiveDate::from_ymd_opt(y, m, d)?.and_hms_opt(0, 0, 0)?;
+        return Some(FileTime::from_unix_time(dt.and_utc().timestamp(), 0));
+    }
+    // "YYYY-MM-DD" or "YYYY/MM/DD"
+    let re_iso = regex::Regex::new(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})").unwrap();
+    if let Some(caps) = re_iso.captures(date_str) {
+        let y: i32 = caps[1].parse().ok()?;
+        let m: u32 = caps[2].parse().ok()?;
+        let d: u32 = caps[3].parse().ok()?;
+        let dt = NaiveDate::from_ymd_opt(y, m, d)?.and_hms_opt(0, 0, 0)?;
+        return Some(FileTime::from_unix_time(dt.and_utc().timestamp(), 0));
+    }
+    None
+}
+
 pub fn set_file_timestamps(file_path: &Path, zip_datetime: zip::DateTime) -> Result<()> {
     let year = zip_datetime.year() as i32;
     let month = zip_datetime.month() as u32;

@@ -6,6 +6,14 @@ use anyhow::Result;
 use reqwest::Client;
 use tracing::debug;
 
+/// Metadata extracted from cover HTTP response headers.
+pub struct CoverMeta {
+    /// Value of the `Last-Modified` header (RFC 2822 date string).
+    pub last_modified: Option<String>,
+    /// Value of the `ETag` header (hex MD5 for single-part OSS objects).
+    pub etag: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct DizzylabClient {
     pub(super) client: Client,
@@ -69,7 +77,47 @@ impl DizzylabClient {
         Ok(bytes.to_vec())
     }
 
-    pub async fn download_cover(&self, cover_url: &str, album_id: &str) -> Result<Vec<u8>> {
+    /// HEAD request to get cover metadata without downloading the body.
+    pub async fn head_cover(&self, cover_url: &str, album_id: &str) -> Result<CoverMeta> {
+        let response = self
+            .client
+            .head(cover_url)
+            .header(
+                "Referer",
+                &format!("https://www.dizzylab.net/d/{album_id}/"),
+            )
+            .send()
+            .await?;
+
+        let last_modified = response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        debug!(
+            "封面 HEAD {} -> Last-Modified={:?} ETag={:?}",
+            album_id, last_modified, etag
+        );
+
+        Ok(CoverMeta {
+            last_modified,
+            etag,
+        })
+    }
+
+    /// Download cover bytes and return them together with response headers.
+    pub async fn download_cover(
+        &self,
+        cover_url: &str,
+        album_id: &str,
+    ) -> Result<(Vec<u8>, CoverMeta)> {
         use anyhow::anyhow;
 
         if cover_url.is_empty() {
@@ -94,8 +142,24 @@ impl DizzylabClient {
             return Err(anyhow!("下载封面失败，状态码: {}", response.status()));
         }
 
+        let last_modified = response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let meta = CoverMeta {
+            last_modified,
+            etag,
+        };
         let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+        Ok((bytes.to_vec(), meta))
     }
 
     pub(super) async fn log_response_text(

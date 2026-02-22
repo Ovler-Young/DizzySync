@@ -1,12 +1,14 @@
 mod tracks;
 mod web;
 
+use crate::archive;
 use crate::client::DizzylabClient;
 use crate::config::Config;
 use crate::metadata;
 use crate::types::{DiscInfo, DiscListItem};
 use anyhow::Result;
 use chrono::{self, Datelike};
+use filetime::set_file_times;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -110,12 +112,17 @@ impl Downloader {
             }
         }
 
-        if let Err(e) = self.download_cover(disc_info, &album_dir).await {
-            warn!("下载封面失败: {}", e);
-        }
+        let cover_last_modified = match self.download_cover(disc_info, &album_dir).await {
+            Ok(lm) => lm,
+            Err(e) => {
+                warn!("下载封面失败: {}", e);
+                None
+            }
+        };
 
         if self.config.behavior.metadata_only {
             info!("仅下载元数据模式：跳过音频文件下载 - {}", disc_info.title);
+            self.set_metadata_timestamps(disc_info, &album_dir, cover_last_modified.as_deref());
             return Ok(());
         }
 
@@ -125,7 +132,63 @@ impl Downloader {
             }
         }
 
+        // Set timestamps on metadata files and the album directory last,
+        // after all file operations, so directory mtime is not overwritten.
+        self.set_metadata_timestamps(disc_info, &album_dir, cover_last_modified.as_deref());
+
         Ok(())
+    }
+
+    /// Set modification timestamps of cover, README, NFO, and the album directory.
+    /// Priority: server `Last-Modified` > album `release_date`.
+    /// Must be called after all other file writes so the directory mtime is set last.
+    fn set_metadata_timestamps(
+        &self,
+        disc_info: &DiscInfo,
+        album_dir: &Path,
+        server_last_modified: Option<&str>,
+    ) {
+        // Priority 1: Last-Modified from OSS/CDN
+        let ft = server_last_modified.and_then(archive::filetime_from_http_date);
+        // Priority 2: release_date from disc info
+        let ft = ft.or_else(|| {
+            disc_info
+                .release_date
+                .as_deref()
+                .and_then(archive::filetime_from_release_date)
+        });
+        let Some(ft) = ft else {
+            debug!("专辑 {} 无可用时间戳，跳过时间戳设置", disc_info.title);
+            return;
+        };
+
+        let cover_ext = get_cover_extension(&disc_info.cover);
+        let metadata_files: &[(&str, bool)] = &[
+            (&format!("cover.{cover_ext}"), true),
+            ("README.md", self.config.behavior.generate_readme),
+            ("album.nfo", self.config.behavior.generate_nfo),
+        ];
+
+        for (name, enabled) in metadata_files {
+            if !enabled {
+                continue;
+            }
+            let path = album_dir.join(name);
+            if path.exists() {
+                if let Err(e) = set_file_times(&path, ft, ft) {
+                    warn!("设置 {} 时间戳失败: {}", name, e);
+                } else {
+                    debug!("已设置 {} 时间戳", name);
+                }
+            }
+        }
+
+        // Directory timestamp must come last (any file write inside updates it).
+        if let Err(e) = set_file_times(album_dir, ft, ft) {
+            warn!("设置专辑目录时间戳失败: {}", e);
+        } else {
+            debug!("已设置专辑目录时间戳");
+        }
     }
 
     async fn download_format(
@@ -146,23 +209,60 @@ impl Downloader {
             .await
     }
 
-    async fn download_cover(&self, disc_info: &DiscInfo, album_dir: &Path) -> Result<()> {
+    /// Download (or skip) the cover image.
+    /// Returns the server `Last-Modified` value when available, whether or not the file was re-downloaded.
+    async fn download_cover(
+        &self,
+        disc_info: &DiscInfo,
+        album_dir: &Path,
+    ) -> Result<Option<String>> {
         if disc_info.cover.is_empty() {
             debug!("专辑 {} 没有封面URL，跳过下载", disc_info.title);
-            return Ok(());
+            return Ok(None);
+        }
+
+        let extension = get_cover_extension(&disc_info.cover);
+        let cover_path = album_dir.join(format!("cover.{extension}"));
+
+        // HEAD first: cheap check for ETag (MD5) and Last-Modified.
+        let meta = match self
+            .client
+            .head_cover(&disc_info.cover, &disc_info.id)
+            .await
+        {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("封面 HEAD 请求失败，直接下载: {}", e);
+                // Fall through to unconditional download with no metadata.
+                let (data, m) = self
+                    .client
+                    .download_cover(&disc_info.cover, &disc_info.id)
+                    .await?;
+                fs::write(&cover_path, data)?;
+                info!("封面下载完成: {}", disc_info.title);
+                return Ok(m.last_modified);
+            }
+        };
+
+        // If local file exists and ETag matches, skip download.
+        if cover_path.exists() {
+            if let Some(etag) = &meta.etag {
+                if cover_md5_matches_etag(&cover_path, etag) {
+                    info!("封面未变更（MD5匹配），跳过下载: {}", disc_info.title);
+                    return Ok(meta.last_modified);
+                }
+            }
         }
 
         info!("下载封面: {}", disc_info.title);
-        let cover_data = self
+        let (data, _) = self
             .client
             .download_cover(&disc_info.cover, &disc_info.id)
             .await?;
-
-        let extension = get_cover_extension(&disc_info.cover);
-        fs::write(album_dir.join(format!("cover.{extension}")), cover_data)?;
+        fs::write(&cover_path, data)?;
         info!("封面下载完成: {}", disc_info.title);
 
-        Ok(())
+        Ok(meta.last_modified)
     }
 
     fn get_album_directory(&self, disc_info: &DiscInfo) -> PathBuf {
@@ -213,6 +313,24 @@ impl Downloader {
             .collect::<String>()
             .trim()
             .to_string()
+    }
+}
+
+/// Returns true if the local file's MD5 matches the ETag from the server.
+/// OSS ETags for single-part uploads are hex MD5 (with surrounding quotes).
+/// Multipart-upload ETags contain a hyphen ("MD5-N") and are skipped.
+fn cover_md5_matches_etag(file_path: &Path, etag: &str) -> bool {
+    let etag_clean = etag.trim_matches('"');
+    if etag_clean.contains('-') {
+        // Multipart ETag — not a plain MD5, cannot compare.
+        return false;
+    }
+    match fs::read(file_path) {
+        Ok(data) => {
+            let digest = md5::compute(&data);
+            format!("{digest:X}").eq_ignore_ascii_case(etag_clean)
+        }
+        Err(_) => false,
     }
 }
 

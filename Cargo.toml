@@ -45,3 +45,6 @@ clap = { version = "4.0", features = ["derive"] }
 
 # 日期时间处理
 chrono = { version = "0.4", features = ["serde"] }
+
+# MD5 校验（封面去重）
+md5 = "0.8"
