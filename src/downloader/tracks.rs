@@ -66,14 +66,27 @@ impl Downloader {
             if self.config.behavior.skip_existing && file_path.exists() {
                 match self.client.head_url(&cdn_url).await {
                     Ok(meta) => {
-                        let md5_matches = meta
-                            .etag
-                            .as_deref()
-                            .map(|etag| file_md5_matches_etag(&file_path, etag))
+                        let etag = meta.etag.as_deref();
+                        // A plain-MD5 ETag has no hyphen; multipart ETags look like "abc123-5".
+                        let etag_is_comparable = etag
+                            .map(|e| !e.trim_matches('"').contains('-'))
                             .unwrap_or(false);
 
-                        if md5_matches {
-                            // File is identical — only update mtime.
+                        let should_skip = if etag_is_comparable {
+                            file_md5_matches_etag(&file_path, etag.unwrap())
+                        } else {
+                            // Multipart ETag or no ETag: can't verify MD5.
+                            // Skip if the file already exists with content.
+                            file_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+                        };
+
+                        if should_skip {
+                            if etag_is_comparable {
+                                debug!("MD5一致，跳过下载: {}", file_name);
+                            } else {
+                                debug!("无法验证MD5（分段ETag），文件非空，跳过: {}", file_name);
+                            }
+                            // Update mtime regardless.
                             if let Some(date_str) = &meta.last_modified {
                                 if let Some(ft) = filetime_from_http_date(date_str) {
                                     if let Err(e) = set_file_times(&file_path, ft, ft) {
@@ -83,11 +96,13 @@ impl Downloader {
                                     }
                                 }
                             }
-                            debug!("MD5一致，跳过下载: {}", file_name);
                             continue;
                         }
 
-                        info!("MD5不一致，重新下载: {}", file_name);
+                        if etag_is_comparable {
+                            info!("MD5不一致，重新下载: {}", file_name);
+                        }
+                        // else: file is empty — fall through to re-download silently.
                     }
                     Err(e) => {
                         warn!("HEAD 请求失败，重新下载 {}: {}", file_name, e);
