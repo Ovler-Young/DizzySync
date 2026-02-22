@@ -4,8 +4,8 @@ use crate::types::DiscInfo;
 use anyhow::{anyhow, Result};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
-use tracing::info;
+use std::path::{Path, PathBuf};
+use tracing::{info, warn};
 
 impl Downloader {
     pub(super) async fn download_web_format(
@@ -98,4 +98,134 @@ impl Downloader {
 
         Ok(())
     }
+
+    /// After gift extraction, find LRC files in the `gift/` subdirectory and copy them
+    /// next to the corresponding audio files in `album_dir`.
+    ///
+    /// LRC filenames in the wild come in at least three forms:
+    ///   1. `1.歌名.lrc`   — digit(s) + dot + title
+    ///   2. `1 歌名.lrc`   — digit(s) + space + title
+    ///   3. `歌名.lrc`     — bare title, no track number
+    ///
+    /// Matching priority: track number (if present) → normalized title comparison.
+    pub(super) fn match_lrc_files(&self, disc_info: &DiscInfo, album_dir: &Path) {
+        let gift_dir = album_dir.join("gift");
+        if !gift_dir.exists() {
+            return;
+        }
+
+        let lrc_files = collect_lrc_files(&gift_dir);
+        if lrc_files.is_empty() {
+            return;
+        }
+
+        info!("发现 {} 个LRC文件，尝试匹配曲目...", lrc_files.len());
+
+        for (idx, track) in disc_info.tracks.iter().enumerate() {
+            let track_num = idx + 1;
+            let normalized_track = normalize_title(&track.title);
+
+            let matched = lrc_files.iter().find(|lrc_path| {
+                let stem = lrc_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                let parsed = parse_lrc_stem(stem);
+
+                if let Some(num) = parsed.track_num {
+                    if num == track_num {
+                        return true;
+                    }
+                }
+
+                normalize_title(&parsed.title) == normalized_track
+            });
+
+            if let Some(lrc_path) = matched {
+                let dest_name =
+                    format!("{} {}.lrc", track_num, self.sanitize_filename(&track.title));
+                let dest = album_dir.join(&dest_name);
+                let src_display = lrc_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                match fs::copy(lrc_path, &dest) {
+                    Ok(_) => info!("LRC匹配: {} → {}", src_display, dest_name),
+                    Err(e) => warn!("复制LRC失败 {}: {}", dest_name, e),
+                }
+            }
+        }
+    }
+}
+
+struct ParsedLrc {
+    track_num: Option<usize>,
+    title: String,
+}
+
+/// Parse an LRC file stem (filename without extension) into an optional track
+/// number and a title string.  Handles the three documented separator styles:
+/// `{N}.{title}`, `{N} {title}`, and bare `{title}`.
+fn parse_lrc_stem(stem: &str) -> ParsedLrc {
+    let trimmed = stem.trim();
+    let digit_end = trimmed
+        .char_indices()
+        .take_while(|(_, c)| c.is_ascii_digit())
+        .map(|(i, _)| i + 1)
+        .last()
+        .unwrap_or(0);
+
+    if digit_end > 0 {
+        if let Some(sep) = trimmed[digit_end..].chars().next() {
+            if sep == '.' || sep == ' ' {
+                if let Ok(num) = trimmed[..digit_end].parse::<usize>() {
+                    // sep is ASCII so its encoded length is 1 byte
+                    let title = trimmed[digit_end + 1..].trim().to_string();
+                    if !title.is_empty() {
+                        return ParsedLrc {
+                            track_num: Some(num),
+                            title,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    ParsedLrc {
+        track_num: None,
+        title: trimmed.to_string(),
+    }
+}
+
+/// Case-insensitive title normalisation: collapse all non-alphanumeric characters
+/// to single spaces so that punctuation / spacing differences don't break matching.
+fn normalize_title(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// Recursively collect every `.lrc` file under `dir`.
+fn collect_lrc_files(dir: &Path) -> Vec<PathBuf> {
+    let mut result = Vec::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return result;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            result.extend(collect_lrc_files(&path));
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("lrc"))
+            .unwrap_or(false)
+        {
+            result.push(path);
+        }
+    }
+    result
 }

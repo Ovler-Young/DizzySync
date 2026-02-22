@@ -59,7 +59,7 @@ impl Downloader {
         for (idx, track) in disc_info.tracks.iter().enumerate() {
             let track_num = idx + 1;
             let file_name = format!(
-                "{:02} - {}.{}",
+                "{} {}.{}",
                 track_num,
                 self.sanitize_filename(&track.title),
                 ext

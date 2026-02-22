@@ -132,6 +132,8 @@ impl Downloader {
             }
         }
 
+        self.match_lrc_files(disc_info, &album_dir);
+
         // Set timestamps on metadata files and the album directory last,
         // after all file operations, so directory mtime is not overwritten.
         self.set_metadata_timestamps(disc_info, &album_dir, cover_last_modified.as_deref());
