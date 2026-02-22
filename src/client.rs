@@ -7,288 +7,324 @@ use tracing::{debug, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-    pub uid: u32,
-    pub allcount: u32,
+    pub uid: String,
+    pub username: String,
 }
 
+/// Disc item returned by getmydisc/ (owned disc list)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Album {
+pub struct DiscListItem {
     pub id: String,
     pub title: String,
     pub label: String,
     pub cover: String,
-    #[serde(rename = "onlyhavegift")]
-    pub only_have_gift: bool,
+    #[serde(default)]
+    pub labelid: Option<serde_json::Value>,
+}
+
+/// Full disc info returned by getthisdicsinfo/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscInfo {
+    pub id: String,
+    pub title: String,
+    pub label: String,
+    #[serde(default)]
+    pub labelid: Option<serde_json::Value>,
+    pub cover: String,
+    #[serde(default)]
+    pub disc_description: Option<String>,
+    #[serde(default)]
+    pub disc_description_2: Option<String>,
     #[serde(default)]
     pub release_date: Option<String>,
     #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub year: Option<String>,
+    pub hasgift: bool,
     #[serde(default)]
-    pub authors: Option<String>,
+    pub tracks: Vec<Track>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlbumListResponse {
-    pub user: UserInfo,
-    pub discs: Vec<Album>,
-    #[serde(rename = "canshowmore")]
-    pub can_show_more: bool,
+pub struct Track {
+    pub id: String,
+    pub discid: String,
+    pub title: String,
+    #[serde(default)]
+    pub authers: String, // note: API typo preserved
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub coverurl: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MyInfoResponse {
+    user: MyInfoUser,
+}
+
+#[derive(Debug, Deserialize)]
+struct MyInfoUser {
+    uid: serde_json::Value,
+    username: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MyDiscResponse {
+    discs: Vec<DiscListItem>,
+    #[serde(default)]
+    canshowmore: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrackDownloadResponse {
+    track: TrackDownloadInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrackDownloadInfo {
+    url: String,
 }
 
 pub struct DizzylabClient {
     client: Client,
-    cookie: String,
     debug: bool,
 }
 
 impl DizzylabClient {
-    pub fn new(cookie: String, debug: bool) -> Result<Self> {
+    pub fn new(debug: bool) -> Result<Self> {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .cookie_store(true)
             .build()?;
 
-        Ok(Self {
-            client,
-            cookie,
-            debug,
-        })
+        Ok(Self { client, debug })
     }
 
-    // 辅助方法：记录HTTP响应用于调试
-    async fn log_response(&self, response: reqwest::Response, context: &str) -> Result<String> {
-        let status = response.status();
-        let headers = response.headers().clone();
-        let text = response.text().await?;
+    /// Login via both web session (for gift downloads) and API token.
+    /// Returns the API token for use in all JSON API calls.
+    pub async fn login(&self, username: &str, password: &str) -> Result<String> {
+        info!("登录中...");
+
+        // Step 1: GET login page to obtain csrftoken cookie
+        let login_page_url = "https://www.dizzylab.net/albums/login/";
+        let response = self.client.get(login_page_url).send().await?;
+
+        // Extract csrftoken from Set-Cookie headers
+        let csrf_token = self.extract_csrftoken_from_response(&response)?;
+        debug!("获取到 csrftoken");
 
         if self.debug {
-            debug!("=== HTTP 调试信息 ({}) ===", context);
-            debug!("状态码: {}", status);
-            debug!("响应头: {:#?}", headers);
-            debug!("响应体: {}", text);
-            debug!("=== HTTP 调试信息结束 ===");
+            debug!("登录页面状态码: {}", response.status());
         }
 
-        Ok(text)
-    }
+        // Step 2: POST web login form to establish session cookies
+        let form_params = [
+            ("csrfmiddlewaretoken", csrf_token.as_str()),
+            ("next", ""),
+            ("username", username),
+            ("password", password),
+        ];
 
-    // 辅助方法：记录JSON响应用于调试
-    async fn log_json_response<T>(&self, response: reqwest::Response, context: &str) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let status = response.status();
-        let headers = response.headers().clone();
-        let text = response.text().await?;
-
-        if self.debug {
-            debug!("=== HTTP 调试信息 ({}) ===", context);
-            debug!("状态码: {}", status);
-            debug!("响应头: {:#?}", headers);
-            debug!("响应体: {}", text);
-            debug!("=== HTTP 调试信息结束 ===");
-        }
-
-        let result: T = serde_json::from_str(&text)?;
-        Ok(result)
-    }
-
-    pub async fn get_user_info(&self) -> Result<UserInfo> {
-        info!("获取用户信息...");
-
-        let response = self
+        let web_login_resp = self
             .client
-            .get("https://www.dizzylab.net/")
-            .header("Cookie", &self.cookie)
+            .post(login_page_url)
+            .header("Referer", login_page_url)
+            .form(&form_params)
             .send()
             .await?;
 
-        let html = self.log_response(response, "获取用户信息").await?;
-        let document = Html::parse_document(&html);
+        if self.debug {
+            debug!("网页登录响应状态码: {}", web_login_resp.status());
+        }
 
-        // 从HTML中提取用户ID
-        let uid = self.extract_user_id(&document)?;
+        info!("网页会话已建立");
 
-        info!("获取到用户信息: ID={}", uid);
+        // Step 3: POST to mobile API to get token
+        let api_login_body = serde_json::json!({
+            "username": username,
+            "password": password,
+        });
 
+        let api_resp = self
+            .client
+            .post("https://www.dizzylab.net/apis/auth/login/")
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&api_login_body)
+            .send()
+            .await?;
+
+        let api_resp_text = api_resp.text().await?;
+        if self.debug {
+            debug!("API 登录响应: {}", api_resp_text);
+        }
+
+        let api_resp_json: serde_json::Value = serde_json::from_str(&api_resp_text)?;
+        let token = api_resp_json
+            .get("token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("登录失败：响应中没有 token，请检查用户名和密码"))?
+            .to_string();
+
+        info!("登录成功");
+        Ok(token)
+    }
+
+    fn extract_csrftoken_from_response(&self, response: &reqwest::Response) -> Result<String> {
+        for (name, value) in response.headers() {
+            if name.as_str().eq_ignore_ascii_case("set-cookie") {
+                let cookie_str = value.to_str().unwrap_or("");
+                if let Some(token_part) = cookie_str.strip_prefix("csrftoken=") {
+                    // Format: "csrftoken=VALUE; ..."
+                    let token = token_part.split(';').next().unwrap_or("").trim();
+                    if !token.is_empty() {
+                        return Ok(token.to_string());
+                    }
+                }
+            }
+        }
+        Err(anyhow!("无法从响应头中获取 csrftoken"))
+    }
+
+    pub async fn get_my_info(&self, token: &str) -> Result<UserInfo> {
+        info!("获取用户信息...");
+
+        let url = format!("https://www.dizzylab.net/apis/getmyinfo/?token={token}");
+        let response = self.client.get(&url).send().await?;
+        let text = self.log_response_text(response, "getmyinfo").await?;
+
+        let parsed: MyInfoResponse = serde_json::from_str(&text)?;
+        let uid = match &parsed.user.uid {
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+
+        info!("用户: {} (UID: {})", parsed.user.username, uid);
         Ok(UserInfo {
             uid,
-            allcount: 0, // 这个值在后续API调用中会更新
+            username: parsed.user.username,
         })
     }
 
-    pub async fn get_user_albums(&self, uid: u32) -> Result<Vec<Album>> {
-        info!("获取用户专辑列表...");
+    pub async fn get_my_discs(&self, token: &str) -> Result<Vec<DiscListItem>> {
+        info!("获取已购专辑列表...");
 
-        let mut all_albums = Vec::new();
-        let mut offset = 0;
-        const LIMIT: u32 = 20;
-
-        // 首先需要获取token
-        let token = self.get_user_token(uid).await?;
+        let mut all_discs = Vec::new();
+        let mut offset = 0u32;
+        const PAGE_SIZE: u32 = 9;
 
         loop {
             let url = format!(
-                "https://www.dizzylab.net/apis/getotheruserinfo/?l={}&r={}&uid={}&token={}",
+                "https://www.dizzylab.net/apis/getmydisc/?l={}&r={}&sort=ad&token={}",
                 offset,
-                offset + LIMIT,
-                uid,
+                offset + PAGE_SIZE,
                 token
             );
-
             debug!("请求专辑列表: {}", url);
 
-            let response = self
-                .client
-                .get(&url)
-                .header("Cookie", &self.cookie)
-                .header(
-                    "Referer",
-                    &format!("https://www.dizzylab.net/u/{uid}/music/"),
-                )
-                .send()
+            let response = self.client.get(&url).send().await?;
+            let text = self
+                .log_response_text(response, &format!("getmydisc offset={offset}"))
                 .await?;
 
-            let album_response: AlbumListResponse = self
-                .log_json_response(response, &format!("获取专辑列表 offset={offset}"))
-                .await?;
+            let parsed: MyDiscResponse = serde_json::from_str(&text)?;
+            let can_show_more = parsed.canshowmore;
+            all_discs.extend(parsed.discs);
 
-            all_albums.extend(album_response.discs);
-
-            if !album_response.can_show_more {
+            if !can_show_more {
                 break;
             }
 
-            offset += LIMIT;
-
-            // 添加延迟避免请求过快
+            offset += PAGE_SIZE;
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
-        info!("获取到 {} 个专辑", all_albums.len());
-        Ok(all_albums)
+        info!("获取到 {} 个专辑", all_discs.len());
+        Ok(all_discs)
     }
 
-    pub async fn get_album_by_id(&self, album_id: &str) -> Result<Album> {
-        info!("根据ID获取专辑信息: {}", album_id);
+    pub async fn get_disc_info(&self, discid: &str, token: &str) -> Result<DiscInfo> {
+        info!("获取专辑详情: {}", discid);
 
-        // 创建基本的专辑结构
-        let mut album = Album {
-            id: album_id.to_string(),
-            title: "未知专辑".to_string(),
-            label: "未知厂牌".to_string(),
-            cover: String::new(),
-            only_have_gift: false,
-            release_date: None,
-            description: None,
-            tags: Vec::new(),
-            year: None,
-            authors: None,
-        };
-
-        // 获取专辑详细信息，更新所有字段
-        self.get_album_details(&mut album).await?;
-
-        Ok(album)
-    }
-
-    pub async fn get_album_details(&self, album: &mut Album) -> Result<()> {
-        info!("获取专辑 {} 的详细信息", album.id);
-
-        let album_url = format!("https://www.dizzylab.net/d/{}/", album.id);
-        let response = self
-            .client
-            .get(&album_url)
-            .header("Cookie", &self.cookie)
-            .send()
+        let url =
+            format!("https://www.dizzylab.net/apis/getthisdicsinfo/?discid={discid}&token={token}");
+        let response = self.client.get(&url).send().await?;
+        let text = self
+            .log_response_text(response, &format!("getthisdicsinfo {discid}"))
             .await?;
 
-        let html = self
-            .log_response(response, &format!("获取专辑详情 {}", album.id))
-            .await?;
-        let document = Html::parse_document(&html);
-
-        // 提取详细信息
-        // 如果标题或厂牌是默认值，尝试从页面提取
-        if album.title == "未知专辑" {
-            album.title = self
-                .extract_title(&document)?
-                .unwrap_or_else(|| album.title.clone());
-        }
-        if album.label == "未知厂牌" {
-            album.label = self
-                .extract_label(&document)?
-                .unwrap_or_else(|| album.label.clone());
-        }
-        album.release_date = self.extract_release_date(&document)?;
-        album.description = self.extract_description(&document)?;
-        album.tags = self.extract_tags(&document);
-        album.year = self.extract_year(&document)?;
-        album.authors = self.extract_authors(&document)?;
-
-        Ok(())
+        let disc_info: DiscInfo = serde_json::from_str(&text)?;
+        Ok(disc_info)
     }
 
-    pub async fn get_download_links(
+    pub async fn get_track_download_url(
         &self,
-        album_id: &str,
-        format: &str,
-    ) -> Result<HashMap<String, String>> {
-        info!("获取专辑 {} 的下载链接 (格式: {})", album_id, format);
+        discid: &str,
+        trackid: &str,
+        packtype: &str,
+        token: &str,
+    ) -> Result<String> {
+        let url = format!(
+            "https://www.dizzylab.net/apis/gettrackdownloadurl/?discid={discid}&trackid={trackid}&packtype={packtype}&token={token}"
+        );
+        debug!(
+            "获取曲目下载链接: discid={} trackid={} packtype={}",
+            discid, trackid, packtype
+        );
 
-        // 首先访问专辑页面获取下载密钥
-        let album_url = format!("https://www.dizzylab.net/d/{album_id}/");
-        let response = self
-            .client
-            .get(&album_url)
-            .header("Cookie", &self.cookie)
-            .send()
+        let response = self.client.get(&url).send().await?;
+        let status = response.status();
+        let text = self
+            .log_response_text(response, &format!("gettrackdownloadurl {trackid}"))
             .await?;
 
-        let html = self
-            .log_response(response, &format!("获取下载密钥 {album_id} {format}"))
-            .await?;
-        let document = Html::parse_document(&html);
+        if !status.is_success() {
+            return Err(anyhow!(
+                "获取曲目下载链接失败，HTTP {} (trackid={}, packtype={}): {}",
+                status,
+                trackid,
+                packtype,
+                &text[..text.len().min(200)]
+            ));
+        }
 
-        // 从HTML中提取下载密钥
-        let download_key = match self.extract_download_key(&document, format) {
-            Ok(key) => key,
-            Err(_) => {
-                // 如果是gift格式且找不到，说明该专辑没有特典内容，返回空结果
-                if format == "gift" {
-                    info!("专辑 {} 没有特典内容，跳过", album_id);
-                    return Ok(HashMap::new());
-                } else {
-                    // 对于其他格式，仍然返回错误
-                    return Err(anyhow!("无法从页面中提取下载密钥，格式: {}", format));
-                }
-            }
-        };
+        let parsed: TrackDownloadResponse = serde_json::from_str(&text).map_err(|e| {
+            anyhow!(
+                "解析曲目下载URL失败 (trackid={}, packtype={}): {} | 响应: {:?}",
+                trackid,
+                packtype,
+                e,
+                &text[..text.len().min(200)]
+            )
+        })?;
 
-        let download_url = if format == "gift" {
-            format!("https://www.dizzylab.net/albums/download_gift/{album_id}/?k={download_key}")
-        } else {
-            format!("https://www.dizzylab.net/albums/download/?d={album_id}&tp={format}&k={download_key}")
-        };
-
-        debug!("下载URL: {}", download_url);
-
-        let mut result = HashMap::new();
-        result.insert(format.to_string(), download_url);
-
-        Ok(result)
+        Ok(parsed.track.url)
     }
 
+    /// Download raw bytes from a CDN URL (no special headers needed)
+    pub async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        debug!("下载: {}", url);
+        let response = self.client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("下载失败，状态码: {}", response.status()));
+        }
+
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Download a gift archive using the web session cookie + Referer header
     pub async fn download_file(&self, url: &str, album_id: &str) -> Result<Vec<u8>> {
-        info!("开始下载: {}", album_id);
+        info!("开始下载 gift: {}", album_id);
 
         let response = self
             .client
             .get(url)
-            .header("Cookie", &self.cookie)
             .header(
                 "Referer",
                 &format!("https://www.dizzylab.net/d/{album_id}/"),
@@ -297,19 +333,14 @@ impl DizzylabClient {
             .await?;
 
         if self.debug {
-            debug!("=== HTTP 下载调试信息 ({}) ===", album_id);
-            debug!("下载URL: {}", url);
-            debug!("状态码: {}", response.status());
-            debug!("响应头: {:#?}", response.headers());
-            debug!("=== HTTP 下载调试信息结束 ===");
+            debug!("下载响应状态码: {} ({})", response.status(), album_id);
         }
 
-        // 检查是否是重定向响应
         if response.status().is_redirection() {
             if let Some(location) = response.headers().get("location") {
                 let redirect_url = location.to_str()?;
                 debug!("重定向到: {}", redirect_url);
-                return self.download_from_cdn(redirect_url).await;
+                return self.download_bytes(redirect_url).await;
             }
         }
 
@@ -317,257 +348,76 @@ impl DizzylabClient {
         Ok(bytes.to_vec())
     }
 
-    async fn download_from_cdn(&self, url: &str) -> Result<Vec<u8>> {
-        if self.debug {
-            debug!("=== CDN 下载调试信息 ===");
-            debug!("CDN URL: {}", url);
-        }
-
-        let response = self.client.get(url).send().await?;
-
-        if self.debug {
-            debug!("CDN 状态码: {}", response.status());
-            debug!("CDN 响应头: {:#?}", response.headers());
-            debug!("=== CDN 下载调试信息结束 ===");
-        }
-
-        let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
-    }
-
-    async fn get_user_token(&self, uid: u32) -> Result<String> {
-        debug!("获取用户token...");
-
-        let url = format!("https://www.dizzylab.net/u/{uid}/music/");
-        let response = self
-            .client
-            .get(&url)
-            .header("Cookie", &self.cookie)
-            .send()
-            .await?;
+    /// Scrape the album page to extract the gift download key.
+    /// Returns an empty map if the album has no gift content.
+    pub async fn get_gift_download_link(&self, album_id: &str) -> Result<HashMap<String, String>> {
+        let album_url = format!("https://www.dizzylab.net/d/{album_id}/");
+        let response = self.client.get(&album_url).send().await?;
 
         let html = self
-            .log_response(response, &format!("获取token uid={uid}"))
+            .log_response_text(response, &format!("gift key {album_id}"))
+            .await?;
+        let document = Html::parse_document(&html);
+
+        let key_regex = regex::Regex::new(r"k=([^&]+)")?;
+        let selector = Selector::parse(r#"a[href*="/albums/download_gift/"]"#).unwrap();
+
+        if let Some(element) = document.select(&selector).next() {
+            if let Some(href) = element.value().attr("href") {
+                if let Some(captures) = key_regex.captures(href) {
+                    if let Some(key) = captures.get(1) {
+                        let download_url = format!(
+                            "https://www.dizzylab.net/albums/download_gift/{album_id}/?k={}",
+                            key.as_str()
+                        );
+                        let mut result = HashMap::new();
+                        result.insert("gift".to_string(), download_url);
+                        return Ok(result);
+                    }
+                }
+            }
+        }
+
+        info!("专辑 {} 没有特典内容，跳过", album_id);
+        Ok(HashMap::new())
+    }
+
+    /// Scrape the album page to get the ZIP/RAR download link for a non-gift format (128/FLAC/etc).
+    /// Uses the web session established during login.
+    pub async fn get_web_format_download_link(
+        &self,
+        album_id: &str,
+        format: &str,
+    ) -> Result<String> {
+        let album_url = format!("https://www.dizzylab.net/d/{album_id}/");
+        let response = self.client.get(&album_url).send().await?;
+        let html = self
+            .log_response_text(response, &format!("web format link {album_id} {format}"))
             .await?;
 
-        // 从JavaScript代码中提取token
-        if let Some(start) = html.find("token = '") {
-            let start = start + 9;
-            if let Some(end) = html[start..].find("'") {
-                let token = &html[start..start + end];
-                debug!("获取到token: {}", token);
-                return Ok(token.to_string());
-            }
-        }
-
-        Err(anyhow!("无法从页面中提取token"))
-    }
-
-    fn extract_user_id(&self, document: &Html) -> Result<u32> {
-        // 查找包含用户ID的链接或元素
-        let selector = Selector::parse(r#"a[href*="/u/"]"#).unwrap();
-
-        let uid_regex = regex::Regex::new(r"/u/(\d+)")?;
-        for element in document.select(&selector) {
-            if let Some(href) = element.value().attr("href") {
-                if let Some(captures) = uid_regex.captures(href) {
-                    if let Some(uid_str) = captures.get(1) {
-                        return Ok(uid_str.as_str().parse()?);
-                    }
-                }
-            }
-        }
-
-        Err(anyhow!("无法从页面中提取用户ID"))
-    }
-
-    fn extract_title(&self, document: &Html) -> Result<Option<String>> {
-        // 从页面标题中提取专辑名称
-        let title_selector = Selector::parse("title").unwrap();
-        if let Some(title_element) = document.select(&title_selector).next() {
-            let title_text = title_element.text().collect::<Vec<_>>().join("");
-            // Dizzylab的页面标题格式通常是 "专辑名 - Dizzylab"
-            if let Some(album_title) = title_text.split(" - ").next() {
-                return Ok(Some(album_title.trim().to_string()));
-            }
-        }
-
-        // 尝试从h1标签提取
-        let h1_selector = Selector::parse("h1").unwrap();
-        if let Some(h1_element) = document.select(&h1_selector).next() {
-            let h1_text = h1_element
-                .text()
-                .collect::<Vec<_>>()
-                .join("")
-                .trim()
-                .to_string();
-            if !h1_text.is_empty() {
-                return Ok(Some(h1_text));
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn extract_label(&self, document: &Html) -> Result<Option<String>> {
-        // 尝试从页面中提取厂牌信息
-        // 这可能需要根据实际的Dizzylab页面结构来调整
-        let label_selector =
-            Selector::parse(".album-info .label, .disc-label, [class*='label']").unwrap();
-        if let Some(label_element) = document.select(&label_selector).next() {
-            let label_text = label_element
-                .text()
-                .collect::<Vec<_>>()
-                .join("")
-                .trim()
-                .to_string();
-            if !label_text.is_empty() {
-                return Ok(Some(label_text));
-            }
-        }
-
-        // 如果找不到，尝试从链接中提取
-        let link_selector = Selector::parse(r#"a[href*="/l/"]"#).unwrap();
-        if let Some(link_element) = document.select(&link_selector).next() {
-            let link_text = link_element
-                .text()
-                .collect::<Vec<_>>()
-                .join("")
-                .trim()
-                .to_string();
-            if !link_text.is_empty() {
-                return Ok(Some(link_text));
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn extract_download_key(&self, document: &Html, format: &str) -> Result<String> {
-        // 从下载链接中提取密钥
+        let document = Html::parse_document(&html);
         let key_regex = regex::Regex::new(r"k=([^&]+)")?;
+        let selector = Selector::parse(&format!(r#"a[href*="tp={format}"]"#)).unwrap();
 
-        if format == "gift" {
-            // gift: /albums/download_gift/ALBUM_ID/?k=KEY
-            let selector = Selector::parse(r#"a[href*="/albums/download_gift/"]"#).unwrap();
-
-            if let Some(element) = document.select(&selector).next() {
-                if let Some(href) = element.value().attr("href") {
-                    if let Some(captures) = key_regex.captures(href) {
-                        if let Some(key) = captures.get(1) {
-                            return Ok(key.as_str().to_string());
-                        }
-                    }
-                }
-            }
-        } else {
-            let tp_param = format;
-
-            let selector = Selector::parse(&format!(r#"a[href*="tp={tp_param}"]"#)).unwrap();
-
-            if let Some(element) = document.select(&selector).next() {
-                if let Some(href) = element.value().attr("href") {
-                    if let Some(captures) = key_regex.captures(href) {
-                        if let Some(key) = captures.get(1) {
-                            return Ok(key.as_str().to_string());
-                        }
+        if let Some(element) = document.select(&selector).next() {
+            if let Some(href) = element.value().attr("href") {
+                if let Some(captures) = key_regex.captures(href) {
+                    if let Some(key) = captures.get(1) {
+                        let download_url = format!(
+                            "https://www.dizzylab.net/albums/download/?d={album_id}&tp={format}&k={}",
+                            key.as_str()
+                        );
+                        return Ok(download_url);
                     }
                 }
             }
         }
 
-        Err(anyhow!("无法从页面中提取下载密钥，格式: {format}"))
-    }
-
-    fn extract_release_date(&self, document: &Html) -> Result<Option<String>> {
-        // 查找发布日期，通常在页面下方
-        let selector = Selector::parse("p").unwrap();
-
-        let date_regex = regex::Regex::new(r"发布于(\d{4}年\d{1,2}月\d{1,2}日)")?;
-        for element in document.select(&selector) {
-            let text = element.text().collect::<Vec<_>>().join("");
-            if text.contains("发布于") {
-                // 提取日期部分，如 "发布于2025年6月10日"
-                if let Some(captures) = date_regex.captures(&text) {
-                    if let Some(date) = captures.get(1) {
-                        return Ok(Some(date.as_str().to_string()));
-                    }
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn extract_description(&self, document: &Html) -> Result<Option<String>> {
-        // 查找专辑描述，通常在页面中的某个段落中
-        let selector = Selector::parse("h3").unwrap();
-
-        for element in document.select(&selector) {
-            let text = element
-                .text()
-                .collect::<Vec<_>>()
-                .join("")
-                .trim()
-                .to_string();
-            if !text.is_empty() && text.len() > 20 {
-                // 过滤掉太短的文本，可能是标题
-                return Ok(Some(text));
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn extract_tags(&self, document: &Html) -> Vec<String> {
-        let mut tags = Vec::new();
-        let selector = Selector::parse("a[href*='/albums/tags/']").unwrap();
-
-        for element in document.select(&selector) {
-            let text = element.text().collect::<Vec<_>>().join("");
-            if let Some(stripped) = text.strip_prefix('#') {
-                tags.push(stripped.to_string()); // 移除#前缀
-            }
-        }
-
-        tags
-    }
-
-    fn extract_year(&self, document: &Html) -> Result<Option<String>> {
-        // 从发布日期中提取年份
-        if let Some(date) = self.extract_release_date(document)? {
-            let year_regex = regex::Regex::new(r"(\d{4})年")?;
-            if let Some(captures) = year_regex.captures(&date) {
-                if let Some(year) = captures.get(1) {
-                    return Ok(Some(year.as_str().to_string()));
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn extract_authors(&self, document: &Html) -> Result<Option<String>> {
-        // 尝试从描述中提取作者信息
-        if let Some(description) = self.extract_description(document)? {
-            // 查找包含作者信息的模式，如 "music：作者名" 或 "作词：作者名"
-            let patterns = [
-                regex::Regex::new(r"music[：:]\s*([^\n\r<]+)")?,
-                regex::Regex::new(r"作曲[：:]\s*([^\n\r<]+)")?,
-                regex::Regex::new(r"作词[：:]\s*([^\n\r<]+)")?,
-                regex::Regex::new(r"Lyrics[：:]\s*([^\n\r<]+)")?,
-            ];
-
-            for pattern in &patterns {
-                if let Some(captures) = pattern.captures(&description) {
-                    if let Some(author) = captures.get(1) {
-                        return Ok(Some(author.as_str().trim().to_string()));
-                    }
-                }
-            }
-        }
-
-        Ok(None)
+        Err(anyhow!(
+            "无法从页面中找到格式 {} 的下载链接 (专辑: {})",
+            format,
+            album_id
+        ))
     }
 
     pub async fn download_cover(&self, cover_url: &str, album_id: &str) -> Result<Vec<u8>> {
@@ -588,11 +438,7 @@ impl DizzylabClient {
             .await?;
 
         if self.debug {
-            debug!("=== HTTP 封面下载调试信息 ({}) ===", album_id);
-            debug!("封面URL: {}", cover_url);
-            debug!("状态码: {}", response.status());
-            debug!("响应头: {:#?}", response.headers());
-            debug!("=== HTTP 封面下载调试信息结束 ===");
+            debug!("封面下载状态码: {} ({})", response.status(), album_id);
         }
 
         if !response.status().is_success() {
@@ -601,5 +447,20 @@ impl DizzylabClient {
 
         let bytes = response.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    async fn log_response_text(
+        &self,
+        response: reqwest::Response,
+        context: &str,
+    ) -> Result<String> {
+        let status = response.status();
+        let text = response.text().await?;
+
+        if self.debug {
+            debug!("=== HTTP [{context}] status={status} body={text} ===");
+        }
+
+        Ok(text)
     }
 }

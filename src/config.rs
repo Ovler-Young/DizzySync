@@ -12,12 +12,13 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserConfig {
-    pub cookie: String,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadConfig {
-    pub formats: Vec<String>, // "128", "MP3", "FLAC", "gift"
+    pub formats: Vec<String>, // "128", "320", "FLAC", "gift"
     pub flatten: bool,
 }
 
@@ -53,10 +54,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             user: UserConfig {
-                cookie: String::new(),
+                username: String::new(),
+                password: String::new(),
             },
             download: DownloadConfig {
-                formats: vec!["MP3".to_string(), "FLAC".to_string()],
+                formats: vec!["320".to_string(), "FLAC".to_string()],
                 flatten: false,
             },
             paths: PathsConfig {
@@ -92,7 +94,7 @@ impl Config {
         let default_config = Config::default();
         default_config.save_to_file(path)?;
         println!("已创建默认配置文件: {path}");
-        println!("请编辑配置文件，设置你的cookie等信息");
+        println!("请编辑配置文件，设置你的用户名和密码");
         Ok(())
     }
 }

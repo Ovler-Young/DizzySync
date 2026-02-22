@@ -126,34 +126,28 @@ async fn main() -> Result<()> {
         info!("调试模式已启用，将显示所有HTTP响应");
     }
 
-    // 如果指定了 --init，创建默认配置文件
     if matches.get_flag("init") {
         Config::create_default_config(config_path)?;
         return Ok(());
     }
 
-    // 检查配置文件是否存在
     if !Path::new(config_path).exists() {
         error!("配置文件不存在: {}", config_path);
         error!("请运行 'dizzysync --init' 创建默认配置文件");
         return Ok(());
     }
 
-    // 加载配置
     let mut config = Config::load_from_file(config_path)?;
 
-    // 如果命令行指定了debug，覆盖配置文件设置
     if matches.get_flag("debug") {
         config.behavior.debug = true;
     }
 
-    // 如果命令行指定了metadata-only，覆盖配置文件设置
     if matches.get_flag("metadata-only") {
         config.behavior.metadata_only = true;
         info!("启用仅元数据模式：只下载专辑信息，不下载音频文件");
     }
 
-    // 处理其他命令行参数覆盖配置
     if let Some(skip_existing) = matches.get_one::<bool>("skip-existing") {
         config.behavior.skip_existing = *skip_existing;
         info!("设置跳过已存在目录: {}", skip_existing);
@@ -184,32 +178,54 @@ async fn main() -> Result<()> {
         info!("设置输出目录: {}", output_dir);
     }
 
-    // 验证配置
-    if config.user.cookie.is_empty() {
-        error!("请在配置文件中设置你的cookie");
+    if config.user.username.is_empty() || config.user.password.is_empty() {
+        error!("请在配置文件中设置 username 和 password");
         return Ok(());
     }
 
-    // 创建客户端
-    let client = DizzylabClient::new(config.user.cookie.clone(), config.behavior.debug)?;
+    // Create client and login
+    let client = DizzylabClient::new(config.behavior.debug)?;
+    let token = match client
+        .login(&config.user.username, &config.user.password)
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            error!("登录失败: {}", e);
+            return Ok(());
+        }
+    };
 
-    // 获取用户信息
-    let user_info = client.get_user_info().await?;
+    // Get user info (for display only)
+    if let Ok(user_info) = client.get_my_info(&token).await {
+        info!("已登录为: {} (UID: {})", user_info.username, user_info.uid);
+    }
 
-    // 根据是否指定了ID来获取专辑列表
+    // Build album list
     let albums = if let Some(album_id) = matches.get_one::<String>("id") {
         info!("获取指定专辑: {}", album_id);
-        // 获取单个专辑
-        match client.get_album_by_id(album_id).await {
-            Ok(album) => vec![album],
+        match client.get_disc_info(album_id, &token).await {
+            Ok(disc_info) => {
+                // Wrap as a DiscListItem so sync_all_albums can fetch details again
+                // (or we can download directly)
+                let downloader = Downloader::new(client, config, token);
+                if matches.get_flag("dry-run") {
+                    println!(
+                        "  1. {} - {} ({})",
+                        disc_info.title, disc_info.label, disc_info.id
+                    );
+                } else {
+                    downloader.download_album(&disc_info).await?;
+                }
+                return Ok(());
+            }
             Err(e) => {
                 error!("获取专辑 {} 失败: {}", album_id, e);
                 return Ok(());
             }
         }
     } else {
-        // 获取用户的所有专辑
-        client.get_user_albums(user_info.uid).await?
+        client.get_my_discs(&token).await?
     };
 
     if albums.is_empty() {
@@ -219,7 +235,6 @@ async fn main() -> Result<()> {
 
     info!("找到 {} 个专辑", albums.len());
 
-    // 如果是dry-run模式，只列出专辑
     if matches.get_flag("dry-run") {
         info!("=== 专辑列表 ===");
         for (index, album) in albums.iter().enumerate() {
@@ -234,8 +249,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // 创建下载器并开始同步
-    let downloader = Downloader::new(client, config);
+    let downloader = Downloader::new(client, config, token);
     downloader.sync_all_albums(albums).await?;
 
     Ok(())
@@ -248,9 +262,10 @@ mod tests {
     #[test]
     fn test_config_creation() {
         let config = Config::default();
-        assert!(!config.user.cookie.is_empty() || config.user.cookie.is_empty()); // 允许空cookie用于测试
+        assert!(config.user.username.is_empty());
+        assert!(config.user.password.is_empty());
         assert_eq!(config.download.formats.len(), 2);
-        assert!(config.download.formats.contains(&"MP3".to_string()));
+        assert!(config.download.formats.contains(&"320".to_string()));
         assert!(config.download.formats.contains(&"FLAC".to_string()));
     }
 }
