@@ -172,6 +172,14 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    let has_128 = config.download.formats.iter().any(|f| f == "128");
+    let has_320 = config.download.formats.iter().any(|f| f == "320");
+    if has_128 && has_320 {
+        error!("formats 中不能同时包含 \"128\" 和 \"320\"：两者均输出 .mp3 文件，文件名会冲突");
+        error!("请在配置文件中只保留其中一个");
+        return Ok(());
+    }
+
     // Create client and login
     let client = DizzylabClient::new(config.behavior.debug)?;
     let token = match client
