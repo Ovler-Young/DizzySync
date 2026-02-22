@@ -32,6 +32,15 @@ impl DizzylabClient {
 
     /// Download raw bytes from a CDN URL (no special headers needed)
     pub async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let (bytes, _) = self.download_bytes_with_last_modified(url).await?;
+        Ok(bytes)
+    }
+
+    /// Download raw bytes from a CDN URL and return the `Last-Modified` header value alongside.
+    pub async fn download_bytes_with_last_modified(
+        &self,
+        url: &str,
+    ) -> Result<(Vec<u8>, Option<String>)> {
         debug!("下载: {}", url);
         let response = self.client.get(url).send().await?;
 
@@ -39,8 +48,14 @@ impl DizzylabClient {
             return Err(anyhow::anyhow!("下载失败，状态码: {}", response.status()));
         }
 
+        let last_modified = response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
         let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+        Ok((bytes.to_vec(), last_modified))
     }
 
     /// Download an archive using the web session cookie + Referer header
@@ -75,6 +90,28 @@ impl DizzylabClient {
 
         let bytes = response.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    /// HEAD request to any CDN URL — returns Last-Modified and ETag without downloading the body.
+    pub async fn head_url(&self, url: &str) -> Result<CoverMeta> {
+        let response = self.client.head(url).send().await?;
+
+        let last_modified = response
+            .headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        Ok(CoverMeta {
+            last_modified,
+            etag,
+        })
     }
 
     /// HEAD request to get cover metadata without downloading the body.

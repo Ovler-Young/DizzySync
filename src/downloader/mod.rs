@@ -249,7 +249,7 @@ impl Downloader {
         // If local file exists and ETag matches, skip download.
         if cover_path.exists() {
             if let Some(etag) = &meta.etag {
-                if cover_md5_matches_etag(&cover_path, etag) {
+                if file_md5_matches_etag(&cover_path, etag) {
                     info!("封面未变更（MD5匹配），跳过下载: {}", disc_info.title);
                     return Ok(meta.last_modified);
                 }
@@ -321,7 +321,7 @@ impl Downloader {
 /// Returns true if the local file's MD5 matches the ETag from the server.
 /// OSS ETags for single-part uploads are hex MD5 (with surrounding quotes).
 /// Multipart-upload ETags contain a hyphen ("MD5-N") and are skipped.
-fn cover_md5_matches_etag(file_path: &Path, etag: &str) -> bool {
+pub(super) fn file_md5_matches_etag(file_path: &Path, etag: &str) -> bool {
     let etag_clean = etag.trim_matches('"');
     if etag_clean.contains('-') {
         // Multipart ETag — not a plain MD5, cannot compare.

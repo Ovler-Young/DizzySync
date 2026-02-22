@@ -17,10 +17,23 @@ impl Downloader {
         let target_dir = album_dir.to_path_buf();
 
         if self.config.behavior.skip_existing && target_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&target_dir) {
-                if entries.count() > 0 {
-                    info!("格式 {} 已存在，跳过下载 - {}", format, disc_info.title);
-                    return Ok(());
+            let ext = match format {
+                "FLAC" => "flac",
+                "128" | "320" => "mp3",
+                _ => "",
+            };
+            if !ext.is_empty() {
+                if let Ok(entries) = fs::read_dir(&target_dir) {
+                    let has_audio = entries.filter_map(|e| e.ok()).any(|e| {
+                        e.file_name()
+                            .to_str()
+                            .map(|n| n.to_lowercase().ends_with(&format!(".{ext}")))
+                            .unwrap_or(false)
+                    });
+                    if has_audio {
+                        info!("格式 {} 已存在，跳过下载 - {}", format, disc_info.title);
+                        return Ok(());
+                    }
                 }
             }
         }
