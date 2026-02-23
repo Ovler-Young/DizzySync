@@ -58,6 +58,9 @@ impl Downloader {
                 }
                 // File exists but lacks our tags (e.g. old download) — re-tag only.
                 debug!("文件已存在但缺少标签，补写标签: {}", file_name);
+                let saved_mtime = std::fs::metadata(&file_path)
+                    .ok()
+                    .map(|m| filetime::FileTime::from_last_modification_time(&m));
                 if let Err(e) = write_mp3_tags(
                     &file_path,
                     disc_info,
@@ -68,6 +71,10 @@ impl Downloader {
                     format,
                 ) {
                     warn!("写入ID3标签失败 {}: {}", file_name, e);
+                } else if let Some(ft) = saved_mtime {
+                    if let Err(e) = set_file_times(&file_path, ft, ft) {
+                        warn!("还原MP3时间戳失败 {}: {}", file_name, e);
+                    }
                 }
                 continue;
             }
@@ -175,6 +182,163 @@ fn cover_path_for_disc(disc_info: &DiscInfo, album_dir: &Path) -> std::path::Pat
     };
     album_dir.join(format!("cover.{ext}"))
 }
+
+// ── FLAC / Vorbis Comment helpers ────────────────────────────────────────────
+
+impl Downloader {
+    /// Write Vorbis Comments (and optional cover art) to every `.flac` file in
+    /// `album_dir`, matching them to `disc_info.tracks` by sort-order index.
+    /// Files that already carry a valid `DIZZYLAB_ID` tag are skipped when
+    /// `skip_existing` is enabled.
+    pub(super) fn tag_flac_files(&self, disc_info: &DiscInfo, album_dir: &Path) {
+        if disc_info.tracks.is_empty() {
+            return;
+        }
+
+        let mut flac_files: Vec<_> = match std::fs::read_dir(album_dir) {
+            Ok(entries) => entries
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|x| x.to_str())
+                        .map(|x| x.eq_ignore_ascii_case("flac"))
+                        .unwrap_or(false)
+                })
+                .map(|e| e.path())
+                .collect(),
+            Err(_) => return,
+        };
+        flac_files.sort();
+
+        if flac_files.is_empty() {
+            return;
+        }
+
+        let cover_path = cover_path_for_disc(disc_info, album_dir);
+        let total_tracks = disc_info.tracks.len() as u32;
+
+        for (idx, file_path) in flac_files.iter().enumerate() {
+            let Some(track) = disc_info.tracks.get(idx) else {
+                break;
+            };
+            let track_num = idx as u32 + 1;
+
+            if self.config.behavior.skip_existing
+                && file_has_dizzylab_flac_tag(file_path, &disc_info.id)
+            {
+                debug!("FLAC已有完整标签，跳过: {}", file_path.display());
+                continue;
+            }
+
+            // Save mtime before tag write so we can restore it afterwards.
+            let saved_mtime = std::fs::metadata(file_path)
+                .ok()
+                .map(|m| filetime::FileTime::from_last_modification_time(&m));
+
+            if let Err(e) = write_flac_tags(
+                file_path,
+                disc_info,
+                track,
+                track_num,
+                total_tracks,
+                &cover_path,
+            ) {
+                warn!("写入FLAC标签失败 {}: {}", file_path.display(), e);
+            } else {
+                debug!("已写入FLAC标签: {}", file_path.display());
+                if let Some(ft) = saved_mtime {
+                    if let Err(e) = set_file_times(file_path, ft, ft) {
+                        warn!("还原FLAC时间戳失败 {}: {}", file_path.display(), e);
+                    }
+                }
+            }
+        }
+
+        info!(
+            "FLAC标签写入完成 ({} 个文件) - {}",
+            flac_files.len().min(disc_info.tracks.len()),
+            disc_info.title
+        );
+    }
+}
+
+fn file_has_dizzylab_flac_tag(file_path: &Path, disc_id: &str) -> bool {
+    let Ok(tag) = metaflac::Tag::read_from_path(file_path) else {
+        return false;
+    };
+    let Some(vc) = tag.vorbis_comments() else {
+        return false;
+    };
+    vc.get("DIZZYLAB_ID")
+        .and_then(|v| v.first())
+        .map(|v| v == disc_id)
+        .unwrap_or(false)
+}
+
+fn write_flac_tags(
+    file_path: &Path,
+    disc_info: &DiscInfo,
+    track: &Track,
+    track_num: u32,
+    total_tracks: u32,
+    cover_path: &Path,
+) -> Result<()> {
+    let mut tag = metaflac::Tag::read_from_path(file_path).unwrap_or_else(|_| metaflac::Tag::new());
+
+    {
+        let vc = tag.vorbis_comments_mut();
+        vc.set_title(vec![track.title.clone()]);
+        vc.set_album(vec![disc_info.title.clone()]);
+
+        let artist = if track.authers.is_empty() {
+            disc_info.label.clone()
+        } else {
+            track.authers.clone()
+        };
+        vc.set_artist(vec![artist]);
+        vc.set("ALBUMARTIST", vec![disc_info.label.clone()]);
+
+        vc.set_track(track_num);
+        vc.set("TRACKTOTAL", vec![total_tracks.to_string()]);
+
+        if let Some(date_str) = disc_info.release_date.as_deref() {
+            let iso = normalize_date(date_str);
+            vc.set("DATE", vec![iso]);
+            if let Some(year) = extract_year_from_date(date_str) {
+                vc.set("YEAR", vec![year.to_string()]);
+            }
+        }
+
+        if !disc_info.tags.is_empty() {
+            vc.set_genre(disc_info.tags.clone());
+        }
+
+        vc.set("DIZZYLAB_ID", vec![disc_info.id.clone()]);
+        vc.set("BITRATE", vec!["FLAC".to_string()]);
+    }
+
+    if cover_path.exists() {
+        if let Ok(data) = std::fs::read(cover_path) {
+            let mime_type = if cover_path.extension().and_then(|e| e.to_str()) == Some("png") {
+                "image/png".to_string()
+            } else {
+                "image/jpeg".to_string()
+            };
+            tag.remove_blocks(metaflac::BlockType::Picture);
+            let mut pic = metaflac::block::Picture::new();
+            pic.mime_type = mime_type;
+            pic.picture_type = metaflac::block::PictureType::CoverFront;
+            pic.data = data;
+            tag.push_block(metaflac::Block::Picture(pic));
+        }
+    }
+
+    tag.write_to_path(file_path)?;
+    Ok(())
+}
+
+// ── MP3 / ID3 helpers ─────────────────────────────────────────────────────────
 
 fn write_mp3_tags(
     file_path: &Path,

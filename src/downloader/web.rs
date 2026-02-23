@@ -15,6 +15,7 @@ impl Downloader {
     ) -> Result<()> {
         let target_dir = album_dir.to_path_buf();
 
+        let mut skip_download = false;
         if self.config.behavior.skip_existing && target_dir.exists() {
             let ext = match format {
                 "FLAC" => "flac",
@@ -31,46 +32,52 @@ impl Downloader {
                     });
                     if has_audio {
                         info!("格式 {} 已存在，跳过下载 - {}", format, disc_info.title);
-                        return Ok(());
+                        skip_download = true;
                     }
                 }
             }
         }
 
-        let download_url = self
-            .client
-            .get_web_format_download_link(&disc_info.id, format)
-            .await?;
+        if !skip_download {
+            let download_url = self
+                .client
+                .get_web_format_download_link(&disc_info.id, format)
+                .await?;
 
-        fs::create_dir_all(&target_dir)?;
-        let archive_path = target_dir.join(format!("{}.zip", format.to_lowercase()));
+            fs::create_dir_all(&target_dir)?;
+            let archive_path = target_dir.join(format!("{}.zip", format.to_lowercase()));
 
-        info!(
-            "下载格式 {} (web) → {} - {}",
-            format,
-            archive_path.display(),
-            disc_info.title
-        );
-        self.client
-            .stream_file_to_path(&download_url, &disc_info.id, &archive_path)
-            .await?;
+            info!(
+                "下载格式 {} (web) → {} - {}",
+                format,
+                archive_path.display(),
+                disc_info.title
+            );
+            self.client
+                .stream_file_to_path(&download_url, &disc_info.id, &archive_path)
+                .await?;
 
-        match archive::detect_archive_format_from_path(&archive_path) {
-            ArchiveFormat::Zip => {
-                archive::extract_zip_from_path(&archive_path, format, album_dir)?;
-                if let Err(e) = fs::remove_file(&archive_path) {
-                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+            match archive::detect_archive_format_from_path(&archive_path) {
+                ArchiveFormat::Zip => {
+                    archive::extract_zip_from_path(&archive_path, format, album_dir)?;
+                    if let Err(e) = fs::remove_file(&archive_path) {
+                        warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                    }
+                }
+                ArchiveFormat::Rar => {
+                    archive::extract_rar_from_path(&archive_path, format, album_dir)?;
+                    if let Err(e) = fs::remove_file(&archive_path) {
+                        warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
+                    }
+                }
+                ArchiveFormat::Unknown => {
+                    // Leave the file as-is (unknown binary payload).
                 }
             }
-            ArchiveFormat::Rar => {
-                archive::extract_rar_from_path(&archive_path, format, album_dir)?;
-                if let Err(e) = fs::remove_file(&archive_path) {
-                    warn!("删除归档文件失败 {}: {}", archive_path.display(), e);
-                }
-            }
-            ArchiveFormat::Unknown => {
-                // Leave the file as-is (unknown binary payload).
-            }
+        }
+
+        if format == "FLAC" {
+            self.tag_flac_files(disc_info, album_dir);
         }
 
         Ok(())
