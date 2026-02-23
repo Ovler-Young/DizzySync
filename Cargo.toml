@@ -51,3 +51,6 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # MD5 校验（封面去重）
 md5 = "0.8"
+
+# 音频元数据写入
+id3 = "1"
