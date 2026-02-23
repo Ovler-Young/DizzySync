@@ -299,7 +299,7 @@ impl Downloader {
         let date = disc_info
             .release_date
             .as_ref()
-            .map(|d| normalize_date(d))
+            .map(|d| metadata::normalize_date(d))
             .unwrap_or(current_date);
         result = result.replace("{date}", &date);
 
@@ -334,23 +334,6 @@ pub(super) fn file_md5_matches_etag(file_path: &Path, etag: &str) -> bool {
         }
         Err(_) => false,
     }
-}
-
-fn normalize_date(date_str: &str) -> String {
-    if let Some(caps) = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
-        .unwrap()
-        .captures(date_str)
-    {
-        if let (Some(y), Some(m), Some(d)) = (caps.get(1), caps.get(2), caps.get(3)) {
-            return format!(
-                "{}-{:02}-{:02}",
-                y.as_str(),
-                m.as_str().parse::<u32>().unwrap_or(1),
-                d.as_str().parse::<u32>().unwrap_or(1)
-            );
-        }
-    }
-    date_str.to_string()
 }
 
 fn get_cover_extension(cover_url: &str) -> &str {

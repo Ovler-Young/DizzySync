@@ -12,8 +12,6 @@ pub struct CoverMeta {
     pub last_modified: Option<String>,
     /// Value of the `ETag` header (hex MD5 for single-part OSS objects).
     pub etag: Option<String>,
-    /// Value of the `Content-Length` header in bytes.
-    pub content_length: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -107,35 +105,6 @@ impl DizzylabClient {
         Ok(())
     }
 
-    /// HEAD request to any CDN URL — returns Last-Modified, ETag, and Content-Length without downloading the body.
-    pub async fn head_url(&self, url: &str) -> Result<CoverMeta> {
-        let response = self.client.head(url).send().await?;
-
-        let last_modified = response
-            .headers()
-            .get("last-modified")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
-        let etag = response
-            .headers()
-            .get("etag")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
-        let content_length = response
-            .headers()
-            .get("content-length")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
-
-        Ok(CoverMeta {
-            last_modified,
-            etag,
-            content_length,
-        })
-    }
-
     /// HEAD request to get cover metadata without downloading the body.
     pub async fn head_cover(&self, cover_url: &str, album_id: &str) -> Result<CoverMeta> {
         let response = self
@@ -168,7 +137,6 @@ impl DizzylabClient {
         Ok(CoverMeta {
             last_modified,
             etag,
-            content_length: None,
         })
     }
 
@@ -217,7 +185,6 @@ impl DizzylabClient {
         let meta = CoverMeta {
             last_modified,
             etag,
-            content_length: None,
         };
         let bytes = response.bytes().await?;
         Ok((bytes.to_vec(), meta))

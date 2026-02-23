@@ -1,6 +1,6 @@
 use super::Downloader;
 use crate::archive::filetime_from_http_date;
-use crate::metadata::extract_year_from_date;
+use crate::metadata::{extract_year_from_date, normalize_date};
 use crate::types::{DiscInfo, Track};
 use anyhow::Result;
 use filetime::set_file_times;
@@ -49,7 +49,30 @@ impl Downloader {
             );
             let file_path = target_dir.join(&file_name);
 
-            // Get CDN URL — needed for download and for HEAD check.
+            let cover_path = cover_path_for_disc(disc_info, album_dir);
+
+            if self.config.behavior.skip_existing && file_path.exists() {
+                if file_has_dizzylab_tag(&file_path, &disc_info.id, format) {
+                    debug!("已有完整标签，跳过: {}", file_name);
+                    continue;
+                }
+                // File exists but lacks our tags (e.g. old download) — re-tag only.
+                debug!("文件已存在但缺少标签，补写标签: {}", file_name);
+                if let Err(e) = write_mp3_tags(
+                    &file_path,
+                    disc_info,
+                    track,
+                    track_num as u32,
+                    disc_info.tracks.len() as u32,
+                    &cover_path,
+                    format,
+                ) {
+                    warn!("写入ID3标签失败 {}: {}", file_name, e);
+                }
+                continue;
+            }
+
+            // File does not exist — fetch CDN URL and download.
             let cdn_url = match self
                 .client
                 .get_track_download_url(&disc_info.id, &track.id, format, &self.token)
@@ -62,49 +85,14 @@ impl Downloader {
                 }
             };
 
-            // Determine whether to skip download (size-based, ±20%).
-            let mut needs_download = true;
-            let mut head_last_modified: Option<String> = None;
-
-            if self.config.behavior.skip_existing && file_path.exists() {
-                match self.client.head_url(&cdn_url).await {
-                    Ok(meta) => {
-                        head_last_modified = meta.last_modified.clone();
-                        let local_size = file_path.metadata().map(|m| m.len()).unwrap_or(0);
-                        let should_skip = if let Some(remote_size) = meta.content_length {
-                            size_within_tolerance(local_size, remote_size, 0.20)
-                        } else {
-                            // No Content-Length: skip if file is non-empty.
-                            local_size > 0
-                        };
-                        if should_skip {
-                            debug!("文件大小接近，跳过下载: {}", file_name);
-                            needs_download = false;
-                        } else {
-                            info!("文件大小差异过大，重新下载: {}", file_name);
-                        }
-                    }
-                    Err(e) => {
-                        warn!("HEAD 请求失败，重新下载 {}: {}", file_name, e);
-                    }
+            let last_modified = match self.client.stream_to_file(&cdn_url, &file_path).await {
+                Ok(lm) => lm,
+                Err(e) => {
+                    warn!("下载曲目 {} 失败: {}", track.title, e);
+                    continue;
                 }
-            }
-
-            // Download if needed.
-            let last_modified = if needs_download {
-                match self.client.stream_to_file(&cdn_url, &file_path).await {
-                    Ok(lm) => lm,
-                    Err(e) => {
-                        warn!("下载曲目 {} 失败: {}", track.title, e);
-                        continue;
-                    }
-                }
-            } else {
-                head_last_modified
             };
 
-            // Always write ID3 tags (whether freshly downloaded or skipped).
-            let cover_path = cover_path_for_disc(disc_info, album_dir);
             if let Err(e) = write_mp3_tags(
                 &file_path,
                 disc_info,
@@ -112,10 +100,9 @@ impl Downloader {
                 track_num as u32,
                 disc_info.tracks.len() as u32,
                 &cover_path,
+                format,
             ) {
                 warn!("写入ID3标签失败 {}: {}", file_name, e);
-            } else {
-                debug!("已写入ID3标签: {}", file_name);
             }
 
             // Set timestamp AFTER tag write, since tag write resets mtime.
@@ -143,51 +130,39 @@ fn format_to_extension(format: &str) -> &str {
     }
 }
 
-/// Parse a Dizzylab release_date string (e.g. "2023年4月1日" or "2023-04-01") into an id3::Timestamp.
+/// Parse a Dizzylab release_date string into an id3::Timestamp.
+/// Delegates normalization to `metadata::normalize_date` (→ "YYYY-MM-DD").
 fn parse_release_date(date_str: &str) -> Option<id3::Timestamp> {
-    // Chinese format: "2023年4月1日"
-    if let Some(caps) = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
-        .unwrap()
-        .captures(date_str)
-    {
-        let year = caps.get(1)?.as_str().parse::<i32>().ok()?;
-        let month = caps.get(2)?.as_str().parse::<u8>().ok()?;
-        let day = caps.get(3)?.as_str().parse::<u8>().ok()?;
-        return Some(id3::Timestamp {
-            year,
-            month: Some(month),
-            day: Some(day),
-            hour: None,
-            minute: None,
-            second: None,
-        });
-    }
-    // ISO format: "2023-04-01" or "2023/04/01"
-    if let Some(caps) = regex::Regex::new(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})")
-        .unwrap()
-        .captures(date_str)
-    {
-        let year = caps.get(1)?.as_str().parse::<i32>().ok()?;
-        let month = caps.get(2)?.as_str().parse::<u8>().ok()?;
-        let day = caps.get(3)?.as_str().parse::<u8>().ok()?;
-        return Some(id3::Timestamp {
-            year,
-            month: Some(month),
-            day: Some(day),
-            hour: None,
-            minute: None,
-            second: None,
-        });
-    }
-    None
+    let iso = normalize_date(date_str);
+    let mut parts = iso.splitn(3, '-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next().and_then(|s| s.parse::<u8>().ok());
+    let day = parts.next().and_then(|s| s.parse::<u8>().ok());
+    Some(id3::Timestamp {
+        year,
+        month,
+        day,
+        hour: None,
+        minute: None,
+        second: None,
+    })
 }
 
-fn size_within_tolerance(local: u64, remote: u64, tolerance: f64) -> bool {
-    if remote == 0 {
-        return local == 0;
+fn file_has_dizzylab_tag(file_path: &Path, disc_id: &str, format: &str) -> bool {
+    let Ok(tag) = id3::Tag::read_from_path(file_path) else {
+        return false;
+    };
+    let mut has_id = false;
+    let mut bitrate_ok = true; // pass if BITRATE frame absent (old file)
+    for t in tag.extended_texts() {
+        if t.description == "DIZZYLAB_ID" {
+            has_id = t.value == disc_id;
+        }
+        if t.description == "BITRATE" {
+            bitrate_ok = t.value == format;
+        }
     }
-    let diff = (local as f64 - remote as f64).abs();
-    diff / remote as f64 <= tolerance
+    has_id && bitrate_ok
 }
 
 fn cover_path_for_disc(disc_info: &DiscInfo, album_dir: &Path) -> std::path::PathBuf {
@@ -208,6 +183,7 @@ fn write_mp3_tags(
     track_num: u32,
     total_tracks: u32,
     cover_path: &Path,
+    format: &str,
 ) -> Result<()> {
     let mut tag = id3::Tag::read_from_path(file_path).unwrap_or_else(|_| id3::Tag::new());
 
@@ -242,10 +218,14 @@ fn write_mp3_tags(
         tag.set_genre(disc_info.tags.join("\0"));
     }
 
-    // Dizzylab disc ID as custom TXXX frame.
+    // Dizzylab disc ID and download format as custom TXXX frames.
     tag.add_frame(id3::frame::ExtendedText {
         description: "DIZZYLAB_ID".to_string(),
         value: disc_info.id.clone(),
+    });
+    tag.add_frame(id3::frame::ExtendedText {
+        description: "BITRATE".to_string(),
+        value: format.to_string(),
     });
 
     if cover_path.exists() {

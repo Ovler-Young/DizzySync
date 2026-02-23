@@ -3,13 +3,31 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-pub fn extract_year_from_date(date_str: &str) -> Option<String> {
-    if let Some(caps) = regex::Regex::new(r"(\d{4})年").unwrap().captures(date_str) {
-        return caps.get(1).map(|m| m.as_str().to_string());
-    }
-    if let Some(caps) = regex::Regex::new(r"^(\d{4})[/-]")
+/// Normalize a Dizzylab date string to "YYYY-MM-DD".
+/// Handles "2023年4月1日" and "2023-04-01" / "2023/04/01".
+/// Returns the original string unchanged if no pattern matches.
+pub fn normalize_date(date_str: &str) -> String {
+    if let Some(caps) = regex::Regex::new(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
         .unwrap()
         .captures(date_str)
+    {
+        if let (Some(y), Some(m), Some(d)) = (caps.get(1), caps.get(2), caps.get(3)) {
+            return format!(
+                "{}-{:02}-{:02}",
+                y.as_str(),
+                m.as_str().parse::<u32>().unwrap_or(1),
+                d.as_str().parse::<u32>().unwrap_or(1),
+            );
+        }
+    }
+    date_str.to_string()
+}
+
+pub fn extract_year_from_date(date_str: &str) -> Option<String> {
+    let normalized = normalize_date(date_str);
+    if let Some(caps) = regex::Regex::new(r"^(\d{4})[/-]")
+        .unwrap()
+        .captures(&normalized)
     {
         return caps.get(1).map(|m| m.as_str().to_string());
     }
