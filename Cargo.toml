@@ -14,7 +14,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 # 序列化和配置解析
 serde = { version = "1.0", features = ["derive"] }
-toml = "1.1.2+spec-1.1.0"
+toml = "1.1.2"
 serde_json = "1.0"
 
 # 错误处理

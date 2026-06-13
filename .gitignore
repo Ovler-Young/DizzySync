@@ -38,3 +38,4 @@ sources/*
 node_modules
 build
 src-tauri
+/web/dist/
