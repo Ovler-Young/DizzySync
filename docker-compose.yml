@@ -1,0 +1,18 @@
+services:
+  dizzysync:
+    image: ghcr.io/ovler-young/dizzysync:latest
+    container_name: dizzysync
+    restart: unless-stopped
+    ports:
+      - "${DIZZYSYNC_PORT:-8787}:8787"
+    environment:
+      DIZZYSYNC_USERNAME: "${DIZZYSYNC_USERNAME:?Set DIZZYSYNC_USERNAME in .env}"
+      DIZZYSYNC_PASSWORD: "${DIZZYSYNC_PASSWORD:?Set DIZZYSYNC_PASSWORD in .env}"
+      DIZZYSYNC_API_KEY: "${DIZZYSYNC_API_KEY:-}"
+      DIZZYSYNC_OUTPUT_DIR: /data
+    volumes:
+      - dizzysync-config:/config
+      - ${DIZZYSYNC_DATA_DIR:-./DizzySync}:/data
+
+volumes:
+  dizzysync-config:

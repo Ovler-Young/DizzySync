@@ -1,0 +1,32 @@
+.git
+.github
+.gitignore
+Dockerfile
+docker-compose.yml
+.env
+.env.*
+!/.env.example
+
+# Rust artifacts
+/target
+Cargo.lock.bak
+
+# Frontend artifacts
+web/node_modules
+web/dist
+web/.vite
+
+# Local config and generated downloads
+config.toml
+DizzySync
+DizzySync*
+
+# Editor and OS noise
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*~
