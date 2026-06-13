@@ -46,3 +46,17 @@ generate_nfo = true        # 生成NFO信息文件
 # true: 只下载专辑信息、封面、README和NFO文件，不下载音频文件
 # false: 下载完整的专辑内容（默认）
 metadata_only = false
+
+[api]
+# API/Web 控制服务监听地址。
+# 本地默认使用 127.0.0.1；Docker/Compose 会通过命令行覆盖为 0.0.0.0:8787。
+bind = "127.0.0.1:8787"
+
+# 可选 API 访问密钥。设置后请求需携带：
+#   X-API-Key: <key>
+# 或：
+#   Authorization: Bearer <key>
+api_key = ""
+
+# Rust 服务托管的前端构建目录。Docker 镜像内为 /app/web。
+web_root = "./web/dist"

@@ -8,6 +8,8 @@ pub struct Config {
     pub download: DownloadConfig,
     pub paths: PathsConfig,
     pub behavior: BehaviorConfig,
+    #[serde(default)]
+    pub api: ApiConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +45,26 @@ pub struct BehaviorConfig {
     pub metadata_only: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiConfig {
+    #[serde(default = "default_api_bind")]
+    pub bind: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_web_root")]
+    pub web_root: PathBuf,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            bind: default_api_bind(),
+            api_key: String::new(),
+            web_root: default_web_root(),
+        }
+    }
+}
+
 fn default_one() -> usize {
     1
 }
@@ -53,6 +75,14 @@ fn default_true() -> bool {
 
 fn default_false() -> bool {
     false
+}
+
+fn default_api_bind() -> String {
+    "127.0.0.1:8787".to_string()
+}
+
+fn default_web_root() -> PathBuf {
+    PathBuf::from("./web/dist")
 }
 
 impl Default for Config {
@@ -78,6 +108,7 @@ impl Default for Config {
                 debug: false,
                 metadata_only: false,
             },
+            api: ApiConfig::default(),
         }
     }
 }
@@ -90,6 +121,11 @@ impl Config {
     }
 
     pub fn save_to_file(&self, path: &str) -> Result<()> {
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
         let content = toml::to_string_pretty(self)?;
         std::fs::write(path, content)?;
         Ok(())
@@ -101,5 +137,48 @@ impl Config {
         println!("已创建默认配置文件: {path}");
         println!("请编辑配置文件，设置你的用户名和密码");
         Ok(())
+    }
+
+    pub fn apply_env_overrides(&mut self, fill_empty_only: bool) {
+        apply_string_env(
+            &mut self.user.username,
+            "DIZZYSYNC_USERNAME",
+            fill_empty_only,
+        );
+        apply_string_env(
+            &mut self.user.password,
+            "DIZZYSYNC_PASSWORD",
+            fill_empty_only,
+        );
+        apply_string_env(&mut self.api.api_key, "DIZZYSYNC_API_KEY", fill_empty_only);
+
+        if let Ok(output_dir) = std::env::var("DIZZYSYNC_OUTPUT_DIR") {
+            if !fill_empty_only || self.paths.output_dir.as_os_str().is_empty() {
+                self.paths.output_dir = PathBuf::from(output_dir);
+            }
+        }
+    }
+
+    pub fn load_or_bootstrap(path: &str) -> Result<Self> {
+        if std::path::Path::new(path).exists() {
+            return Self::load_from_file(path);
+        }
+
+        let mut config = Self::default();
+        config.apply_env_overrides(false);
+        if std::env::var("DIZZYSYNC_OUTPUT_DIR").is_err() {
+            config.paths.output_dir = PathBuf::from("/data");
+        }
+        config.api.web_root = PathBuf::from("/app/web");
+        config.save_to_file(path)?;
+        Ok(config)
+    }
+}
+
+fn apply_string_env(value: &mut String, key: &str, fill_empty_only: bool) {
+    if let Ok(env_value) = std::env::var(key) {
+        if !fill_empty_only || value.is_empty() {
+            *value = env_value;
+        }
     }
 }

@@ -7,14 +7,14 @@ authors = ["去离子水 <ovlertheyoung@gmail.com>"]
 
 [dependencies]
 # HTTP客户端
-reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "form", "rustls"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "cookies", "form", "rustls"] }
 
 # 异步运行时
 tokio = { version = "1.0", features = ["full"] }
 
 # 序列化和配置解析
 serde = { version = "1.0", features = ["derive"] }
-toml = "1.0"
+toml = "1.1.2+spec-1.1.0"
 serde_json = "1.0"
 
 # 错误处理
@@ -42,6 +42,10 @@ path-clean = "1.0"
 
 # 命令行界面
 clap = { version = "4.0", features = ["derive"] }
+
+# HTTP API 控制服务与静态前端托管
+axum = "0.8.9"
+tower-http = { version = "0.6.11", features = ["fs"] }
 
 # 日期时间处理
 chrono = { version = "0.4", features = ["serde"] }

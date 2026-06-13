@@ -1,3 +1,4 @@
+mod api_control;
 mod archive;
 mod client;
 mod config;
@@ -104,6 +105,33 @@ async fn main() -> Result<()> {
                 .help("指定输出目录")
                 .value_parser(clap::value_parser!(String)),
         )
+        .arg(
+            Arg::new("api-server")
+                .long("api-server")
+                .help("启动HTTP API与Web控制服务")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("api-bind")
+                .long("api-bind")
+                .value_name("ADDR")
+                .help("API/Web服务监听地址，例如 0.0.0.0:8787")
+                .value_parser(clap::value_parser!(String)),
+        )
+        .arg(
+            Arg::new("api-key")
+                .long("api-key")
+                .value_name("KEY")
+                .help("API访问密钥；设置后请求需携带 X-API-Key 或 Bearer Token")
+                .value_parser(clap::value_parser!(String)),
+        )
+        .arg(
+            Arg::new("web-root")
+                .long("web-root")
+                .value_name("DIR")
+                .help("静态Web前端目录")
+                .value_parser(clap::value_parser!(String)),
+        )
         .get_matches();
 
     let config_path = matches.get_one::<String>("config").unwrap();
@@ -125,13 +153,19 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    if !Path::new(config_path).exists() {
+    let is_api_server = matches.get_flag("api-server");
+
+    if !Path::new(config_path).exists() && !is_api_server {
         error!("配置文件不存在: {}", config_path);
         error!("请运行 'dizzysync --init' 创建默认配置文件");
         return Ok(());
     }
 
-    let mut config = Config::load_from_file(config_path)?;
+    let mut config = if is_api_server {
+        Config::load_or_bootstrap(config_path)?
+    } else {
+        Config::load_from_file(config_path)?
+    };
 
     if matches.get_flag("debug") {
         config.behavior.debug = true;
@@ -167,15 +201,37 @@ async fn main() -> Result<()> {
         info!("设置输出目录: {}", output_dir);
     }
 
-    if config.user.username.is_empty() || config.user.password.is_empty() {
-        error!("请在配置文件中设置 username 和 password");
+    if let Some(api_bind) = matches.get_one::<String>("api-bind") {
+        config.api.bind = api_bind.clone();
+        info!("设置API/Web监听地址: {}", api_bind);
+    }
+
+    if let Some(api_key) = matches.get_one::<String>("api-key") {
+        config.api.api_key = api_key.clone();
+        info!("已设置API访问密钥");
+    }
+
+    if let Some(web_root) = matches.get_one::<String>("web-root") {
+        config.api.web_root = PathBuf::from(web_root);
+        info!("设置Web前端目录: {}", web_root);
+    }
+
+    if is_api_server {
+        config.save_to_file(config_path)?;
+        return api_control::run(api_control::ApiServerOptions {
+            config_path: config_path.clone(),
+            config,
+        })
+        .await;
+    }
+
+    if let Err(e) = api_control::validate_credentials(&config) {
+        error!("{}", e);
         return Ok(());
     }
 
-    let has_128 = config.download.formats.iter().any(|f| f == "128");
-    let has_320 = config.download.formats.iter().any(|f| f == "320");
-    if has_128 && has_320 {
-        error!("formats 中不能同时包含 \"128\" 和 \"320\"：两者均输出 .mp3 文件，文件名会冲突");
+    if let Err(e) = api_control::validate_formats(&config) {
+        error!("{}", e);
         error!("请在配置文件中只保留其中一个");
         return Ok(());
     }
