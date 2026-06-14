@@ -1,4 +1,9 @@
-import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  ExperimentOutlined,
+  MinusCircleOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import {
   Alert,
   App,
@@ -16,7 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
-import type { ConfigResponse, UpdateConfigRequest } from "../types.ts";
+import type { ConfigResponse, TestLoginResponse, UpdateConfigRequest } from "../types.ts";
 
 interface ConfigFormProps {
   config: ConfigResponse | null;
@@ -46,11 +51,18 @@ interface ConfigFormValues {
   apiKey?: string;
 }
 
+interface AccountTestState {
+  loading: boolean;
+  result?: TestLoginResponse;
+  error?: string;
+}
+
 export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormProps) {
   const { message } = App.useApp();
   const { t } = useI18n();
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
+  const [accountTests, setAccountTests] = useState<Record<number, AccountTestState>>({});
   const isOnboarding = mode === "onboarding";
   const outputDirLocked = Boolean(config?.config.paths.output_dir_locked);
 
@@ -108,6 +120,57 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       form.setFieldsValue(initialValues);
     }
   }, [form, initialValues]);
+
+  const testAccount = useCallback(
+    async (fieldName: number, fieldKey: number) => {
+      try {
+        await form.validateFields([
+          ["users", fieldName, "username"],
+          ["users", fieldName, "password"],
+        ]);
+      } catch {
+        return;
+      }
+
+      const account = form.getFieldValue(["users", fieldName]) as AccountFormValue | undefined;
+      const username = account?.username?.trim() ?? "";
+      const password = account?.password?.trim() ?? "";
+      const savedAccount = config?.config.users[fieldName] ?? config?.config.user;
+      if (!(password || savedAccount?.has_password)) {
+        form.setFields([
+          {
+            name: ["users", fieldName, "password"],
+            errors: [t("config.passwordRequired")],
+          },
+        ]);
+        return;
+      }
+
+      setAccountTests((current) => ({
+        ...current,
+        [fieldKey]: { loading: true },
+      }));
+      try {
+        const result = await api.testLogin({
+          username,
+          ...(password ? { password } : {}),
+        });
+        setAccountTests((current) => ({
+          ...current,
+          [fieldKey]: { loading: false, result },
+        }));
+      } catch (caught) {
+        setAccountTests((current) => ({
+          ...current,
+          [fieldKey]: {
+            loading: false,
+            error: caught instanceof Error ? caught.message : String(caught),
+          },
+        }));
+      }
+    },
+    [config, form, t],
+  );
 
   const submit = useCallback(
     async (values: ConfigFormValues) => {
@@ -178,48 +241,94 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           message={t("config.outputDirLocked")}
         />
       ) : null}
-      <Form form={form} layout="vertical" onFinish={submit}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={submit}
+        onValuesChange={(changedValues) => {
+          if ("users" in changedValues) {
+            setAccountTests({});
+          }
+        }}
+      >
         <Form.List name="users">
           {(fields, { add, remove }) => (
             <Space direction="vertical" style={{ width: "100%" }}>
               {fields.map((field) => {
                 const account = config?.config.users[field.name] ?? config?.config.user;
+                const testState = accountTests[field.key];
+                const testResult = testState?.result;
+                let testAlertType: "success" | "error" = "error";
+                if (testResult?.success) {
+                  testAlertType = "success";
+                }
+
+                let testMessage = testState?.error ?? testResult?.message;
+                if (testResult?.user) {
+                  testMessage = t("config.testLoginSuccessUser", {
+                    username: testResult.user.username,
+                    uid: testResult.user.uid,
+                  });
+                }
                 return (
-                  <Space align="start" key={field.key} size="large" wrap={true}>
-                    <Form.Item
-                      {...field}
-                      label={t("config.username")}
-                      name={[field.name, "username"]}
-                      rules={[{ required: true, message: t("config.usernameRequired") }]}
-                    >
-                      <Input autoComplete="username" style={{ width: 280 }} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      label={t("config.password")}
-                      name={[field.name, "password"]}
-                      rules={[
-                        {
-                          required: isOnboarding && !account?.has_password,
-                          message: t("config.passwordRequired"),
-                        },
-                      ]}
-                    >
-                      <Input.Password
-                        autoComplete="current-password"
-                        placeholder={t("config.passwordPlaceholder")}
-                        style={{ width: 280 }}
-                      />
-                    </Form.Item>
-                    {fields.length > 1 ? (
-                      <Button
-                        danger={true}
-                        icon={<MinusCircleOutlined />}
-                        style={{ marginTop: 30 }}
-                        onClick={() => remove(field.name)}
+                  <Space direction="vertical" key={field.key} style={{ width: "100%" }}>
+                    <Space align="start" size="large" wrap={true}>
+                      <Form.Item
+                        {...field}
+                        label={t("config.username")}
+                        name={[field.name, "username"]}
+                        rules={[{ required: true, message: t("config.usernameRequired") }]}
                       >
-                        {t("config.removeAccount")}
+                        <Input autoComplete="username" style={{ width: 280 }} />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        label={t("config.password")}
+                        name={[field.name, "password"]}
+                        rules={[
+                          {
+                            required: isOnboarding && !account?.has_password,
+                            message: t("config.passwordRequired"),
+                          },
+                        ]}
+                      >
+                        <Input.Password
+                          autoComplete="current-password"
+                          placeholder={t("config.passwordPlaceholder")}
+                          style={{ width: 280 }}
+                        />
+                      </Form.Item>
+                      <Button
+                        icon={<ExperimentOutlined />}
+                        loading={testState?.loading}
+                        style={{ marginTop: 30 }}
+                        onClick={() => testAccount(field.name, field.key)}
+                      >
+                        {t("config.testLogin")}
                       </Button>
+                      {fields.length > 1 ? (
+                        <Button
+                          danger={true}
+                          icon={<MinusCircleOutlined />}
+                          style={{ marginTop: 30 }}
+                          onClick={() => remove(field.name)}
+                        >
+                          {t("config.removeAccount")}
+                        </Button>
+                      ) : null}
+                    </Space>
+                    {testMessage ? (
+                      <Alert
+                        showIcon={true}
+                        style={{ maxWidth: 760 }}
+                        type={testAlertType}
+                        message={
+                          testResult?.success
+                            ? t("config.testLoginSuccess")
+                            : t("config.testLoginFailed")
+                        }
+                        description={testMessage}
+                      />
                     ) : null}
                   </Space>
                 );

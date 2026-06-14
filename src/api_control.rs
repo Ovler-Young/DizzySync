@@ -206,6 +206,20 @@ struct BootstrapConfigRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct TestLoginRequest {
+    username: String,
+    password: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TestLoginResponse {
+    success: bool,
+    account_username: String,
+    user: Option<UserInfo>,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SyncRequest {
     id: Option<String>,
 }
@@ -242,6 +256,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         .route("/logs", get(get_logs))
         .route("/config", get(get_config).put(update_config))
         .route("/config/bootstrap", post(bootstrap_config))
+        .route("/config/test-login", post(test_login))
         .route("/albums", get(list_albums))
         .route("/albums/{id}", get(get_album))
         .route("/sync", post(start_sync))
@@ -341,6 +356,84 @@ async fn update_config(
         exists: std::path::Path::new(&state.config_path).exists(),
         config: PublicConfig::from_config(&config),
     }))
+}
+
+async fn test_login(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(req): Json<TestLoginRequest>,
+) -> Result<Json<TestLoginResponse>, ApiError> {
+    authorize(&state, &headers).await?;
+
+    let username = req.username.trim().to_string();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("请设置 Dizzylab username"));
+    }
+
+    let config = state.config.read().await.clone();
+    let password = req
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|password| !password.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            config
+                .accounts()
+                .into_iter()
+                .find(|account| account.username == username)
+                .map(|account| account.password)
+        })
+        .unwrap_or_default();
+
+    if password.trim().is_empty() {
+        return Err(ApiError::bad_request("请设置 Dizzylab password"));
+    }
+
+    let account = UserConfig {
+        username: username.clone(),
+        password,
+    };
+    let account_label = account_label(&account);
+    let client = DizzylabClient::new(config.behavior.debug)?;
+
+    match client.login(&account.username, &account.password).await {
+        Ok(token) => match client.get_my_info(&token).await {
+            Ok(user) => {
+                let message = format!(
+                    "账号 {account_label} 登录成功，已获取用户 {} (UID: {})",
+                    user.username, user.uid
+                );
+                push_log(&state, "info", message.clone()).await;
+                Ok(Json(TestLoginResponse {
+                    success: true,
+                    account_username: account.username,
+                    user: Some(user),
+                    message,
+                }))
+            }
+            Err(e) => {
+                let message = format!("账号 {account_label} 登录成功，但获取用户信息失败: {e}");
+                push_log(&state, "warn", message.clone()).await;
+                Ok(Json(TestLoginResponse {
+                    success: true,
+                    account_username: account.username,
+                    user: None,
+                    message,
+                }))
+            }
+        },
+        Err(e) => {
+            let message = format!("账号 {account_label} 登录失败: {e}");
+            push_log(&state, "warn", message.clone()).await;
+            Ok(Json(TestLoginResponse {
+                success: false,
+                account_username: account.username,
+                user: None,
+                message,
+            }))
+        }
+    }
 }
 
 async fn bootstrap_config(

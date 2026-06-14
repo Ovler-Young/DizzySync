@@ -123,6 +123,18 @@ export interface UpdateUserConfig {
   password?: string;
 }
 
+export interface TestLoginRequest {
+  username: string;
+  password?: string;
+}
+
+export interface TestLoginResponse {
+  success: boolean;
+  account_username: string;
+  user: UserInfo | null;
+  message: string;
+}
+
 export interface UpdateConfigRequest {
   user?: UpdateUserConfig;
   users?: UpdateUserConfig[];
