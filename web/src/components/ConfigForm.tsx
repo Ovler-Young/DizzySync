@@ -264,7 +264,9 @@ export function ConfigForm({ config, mode = "settings", onSaved, onFocusGuide }:
                 const account = config?.config.users[field.name] ?? config?.config.user;
                 const testState = accountTests[field.key];
                 const testResult = testState?.result;
-                const testAlertType: "success" | "error" = testResult?.success ? "success" : "error";
+                const testAlertType: "success" | "error" = testResult?.success
+                  ? "success"
+                  : "error";
 
                 let testMessage = testState?.error ?? testResult?.message;
                 if (testResult?.user) {
