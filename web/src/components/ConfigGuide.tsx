@@ -18,7 +18,7 @@ export function ConfigGuide({ activeKey, onActiveKeyChange }: ConfigGuideProps) 
     activeKey === key ? "guide-section-active" : undefined;
 
   return (
-    <Card title={t("guide.title")}>
+    <Card className="config-guide-card" title={t("guide.title")}>
       <Collapse
         activeKey={activeKey}
         onChange={(key: Key | Key[]) => {

@@ -70,6 +70,7 @@ const translations: Record<Language, TranslationMap> = {
     "detail.title": "专辑详情",
     "detail.sync": "同步此专辑",
     "detail.openInDizzylab": "在 Dizzylab 打开",
+    "detail.openLocalFile": "打开本地文件",
     "detail.releaseDate": "发布日期",
     "detail.gift": "特典",
     "detail.hasGift": "有",
@@ -134,6 +135,11 @@ const translations: Record<Language, TranslationMap> = {
     "logs.filterLevel": "按级别筛选",
     "logs.filterStart": "开始时间",
     "logs.filterEnd": "结束时间",
+    "footer.disclaimer":
+      "DizzySync 是非官方项目，与 Dizzylab 官方无隶属、背书或合作关系。请遵守 Dizzylab 服务条款与当地法律，仅同步你有权访问的内容。",
+    "footer.source": "开源地址",
+    "footer.dizzylab": "Dizzylab 官网",
+    "footer.credit": "Credits: Dizzylab 与开源社区",
     "guide.title": "配置指南",
     "guide.user.label": "登录凭据 [[users]]",
     "guide.user.body":
@@ -217,6 +223,7 @@ const translations: Record<Language, TranslationMap> = {
     "detail.title": "Album details",
     "detail.sync": "Sync this album",
     "detail.openInDizzylab": "Open in Dizzylab",
+    "detail.openLocalFile": "Open local file",
     "detail.releaseDate": "Release date",
     "detail.gift": "Gift",
     "detail.hasGift": "Yes",
@@ -284,6 +291,11 @@ const translations: Record<Language, TranslationMap> = {
     "logs.filterLevel": "Filter by level",
     "logs.filterStart": "Start time",
     "logs.filterEnd": "End time",
+    "footer.disclaimer":
+      "DizzySync is an unofficial project and is not affiliated with, endorsed by, or partnered with Dizzylab. Please follow Dizzylab terms and local laws, and only sync content you are allowed to access.",
+    "footer.source": "Source code",
+    "footer.dizzylab": "Dizzylab website",
+    "footer.credit": "Credits: Dizzylab and the open-source community",
     "guide.title": "Configuration guide",
     "guide.user.label": "Login credentials [[users]]",
     "guide.user.body":

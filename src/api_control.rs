@@ -14,7 +14,7 @@ use chrono::Utc;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
-use std::path::PathBuf;
+use std::path::{Path as StdPath, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -95,6 +95,12 @@ struct LogQuery {
     level: Option<String>,
     start: Option<String>,
     end: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalFileQuery {
+    path: String,
+    api_key: Option<String>,
 }
 
 static WEB_LOGS: OnceLock<Arc<Mutex<Vec<LogEntry>>>> = OnceLock::new();
@@ -330,6 +336,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         .route("/config/test-login", post(test_login))
         .route("/albums", get(list_albums))
         .route("/albums/{id}", get(get_album))
+        .route("/local-file", get(get_local_file))
         .route("/sync", post(start_sync))
         .route("/sync/{id}", post(start_album_sync))
         .with_state(state);
@@ -658,6 +665,94 @@ async fn get_album(
         .unwrap_or_else(|| ApiError::bad_request("未配置 Dizzylab 账号")))
 }
 
+async fn get_local_file(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(query): Query<LocalFileQuery>,
+) -> Result<Response, ApiError> {
+    let config = state.config.read().await.clone();
+    authorize_with_key(
+        &config.api.api_key,
+        query
+            .api_key
+            .as_deref()
+            .or_else(|| header_api_key(&headers)),
+    )?;
+
+    let requested = PathBuf::from(&query.path);
+    let canonical_file = requested
+        .canonicalize()
+        .map_err(|_| ApiError::not_found("本地文件不存在"))?;
+    let canonical_output = config
+        .paths
+        .output_dir
+        .canonicalize()
+        .map_err(|_| ApiError::not_found("输出目录不存在"))?;
+
+    if !canonical_file.starts_with(&canonical_output) || !canonical_file.is_file() {
+        return Err(ApiError::not_found("本地文件不存在"));
+    }
+    if !is_supported_audio_file(&canonical_file) {
+        return Err(ApiError::bad_request("不支持的本地文件类型"));
+    }
+
+    let content_type = content_type_for_audio(&canonical_file);
+    let file_name = canonical_file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("audio");
+
+    let bytes = tokio::fs::read(&canonical_file)
+        .await
+        .map_err(|e| ApiError::internal(format!("读取本地文件失败: {e}")))?;
+    let mut response = Response::new(Body::from(bytes));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        content_type
+            .parse()
+            .unwrap_or(header::HeaderValue::from_static("application/octet-stream")),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        format!("inline; filename=\"{}\"", sanitize_header_value(file_name))
+            .parse()
+            .unwrap_or(header::HeaderValue::from_static("inline")),
+    );
+    Ok(response)
+}
+
+fn is_supported_audio_file(path: &StdPath) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "mp3" | "flac" | "wav" | "m4a" | "ogg"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn content_type_for_audio(path: &StdPath) -> &'static str {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("mp3") => "audio/mpeg",
+        Some("flac") => "audio/flac",
+        Some("wav") => "audio/wav",
+        Some("m4a") => "audio/mp4",
+        Some("ogg") => "audio/ogg",
+        _ => "application/octet-stream",
+    }
+}
+
+fn sanitize_header_value(value: &str) -> String {
+    value.replace(['\r', '\n', '"'], "_")
+}
+
 async fn start_sync(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -835,11 +930,11 @@ fn account_label(account: &UserConfig) -> String {
 
 async fn authorize(state: &ApiState, headers: &HeaderMap) -> Result<(), ApiError> {
     let expected = state.config.read().await.api.api_key.clone();
-    if expected.is_empty() {
-        return Ok(());
-    }
+    authorize_with_key(&expected, header_api_key(headers))
+}
 
-    let provided = headers
+fn header_api_key(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get("x-api-key")
         .and_then(|value| value.to_str().ok())
         .or_else(|| {
@@ -847,9 +942,11 @@ async fn authorize(state: &ApiState, headers: &HeaderMap) -> Result<(), ApiError
                 .get(header::AUTHORIZATION)
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.strip_prefix("Bearer "))
-        });
+        })
+}
 
-    if provided == Some(expected.as_str()) {
+fn authorize_with_key(expected: &str, provided: Option<&str>) -> Result<(), ApiError> {
+    if expected.is_empty() || provided == Some(expected) {
         Ok(())
     } else {
         Err(ApiError::unauthorized("无效或缺失 API key"))
@@ -1293,6 +1390,20 @@ impl ApiError {
         Self {
             status: StatusCode::BAD_REQUEST,
             message: message.to_string(),
+        }
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: message.into(),
+        }
+    }
+
+    fn internal(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
         }
     }
 }

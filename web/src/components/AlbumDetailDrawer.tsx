@@ -1,6 +1,7 @@
 import { ExportOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Tooltip, Typography } from "antd";
 import { useCallback } from "react";
+import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 import type { DiscInfo, Track } from "../types.ts";
 
@@ -43,13 +44,34 @@ function renderTrackStatus(track: Track, t: (key: string) => string) {
   return <Tooltip title={local.paths.join("\n")}>{tag}</Tooltip>;
 }
 
+function renderTrackMedia(track: Track, t: (key: string) => string) {
+  const path = track.local?.paths[0];
+  if (!path) {
+    return null;
+  }
+  const src = localFileUrl(path);
+  return (
+    <Space className="track-media" direction="vertical" size={4}>
+      <audio controls={true} preload="none" src={src}>
+        <track kind="captions" />
+      </audio>
+      <Button href={src} size="small" target="_blank">
+        {t("detail.openLocalFile")}
+      </Button>
+    </Space>
+  );
+}
+
 function renderTrack(track: Track, index: number, t: (key: string) => string) {
   return (
     <List.Item extra={renderTrackStatus(track, t)}>
-      <Typography.Text>
-        {String(index + 1).padStart(2, "0")}. {track.title}
-        {track.authers ? ` — ${track.authers}` : ""}
-      </Typography.Text>
+      <Space direction="vertical" size={6} style={{ width: "100%" }}>
+        <Typography.Text>
+          {String(index + 1).padStart(2, "0")}. {track.title}
+          {track.authers ? ` — ${track.authers}` : ""}
+        </Typography.Text>
+        {renderTrackMedia(track, t)}
+      </Space>
     </List.Item>
   );
 }

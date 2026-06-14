@@ -28,24 +28,36 @@ function hasPartialLocalState(album: DiscListItem) {
   return album.local.downloaded_tracks > 0 || album.local.audio_files > 0;
 }
 
-function localStateColor(album: DiscListItem) {
+function localStateValue(album: DiscListItem) {
   if (album.local?.downloaded) {
-    return "success";
+    return "downloaded";
   }
   if (hasPartialLocalState(album)) {
-    return "processing";
+    return "partial";
   }
-  return "default";
+  return "missing";
+}
+
+function localStateColor(album: DiscListItem) {
+  switch (localStateValue(album)) {
+    case "downloaded":
+      return "success";
+    case "partial":
+      return "processing";
+    default:
+      return "default";
+  }
 }
 
 function localStateLabel(album: DiscListItem, t: (key: string) => string) {
-  if (album.local?.downloaded) {
-    return t("album.localDownloaded");
+  switch (localStateValue(album)) {
+    case "downloaded":
+      return t("album.localDownloaded");
+    case "partial":
+      return t("album.localPartial");
+    default:
+      return t("album.localNotDownloaded");
   }
-  if (hasPartialLocalState(album)) {
-    return t("album.localPartial");
-  }
-  return t("album.localNotDownloaded");
 }
 
 function AlbumActions({ albumId, syncDisabled, onShow, onSync }: AlbumActionsProps) {
@@ -113,6 +125,12 @@ export function AlbumTable({
         title: t("album.local"),
         key: "local",
         width: 150,
+        filters: [
+          { text: t("album.localDownloaded"), value: "downloaded" },
+          { text: t("album.localPartial"), value: "partial" },
+          { text: t("album.localNotDownloaded"), value: "missing" },
+        ],
+        onFilter: (value, album) => localStateValue(album) === value,
         render: (_, album) => {
           const tag = <Tag color={localStateColor(album)}>{localStateLabel(album, t)}</Tag>;
           return album.local?.path ? <Tooltip title={album.local.path}>{tag}</Tooltip> : tag;
