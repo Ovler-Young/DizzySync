@@ -19,7 +19,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY Cargo.toml Cargo.lock* ./
+COPY Cargo.toml Cargo.lock* build.rs ./
 COPY src ./src
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
