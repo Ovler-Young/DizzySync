@@ -141,16 +141,6 @@ impl Config {
 
     pub fn apply_env_overrides(&mut self, fill_empty_only: bool) {
         apply_string_env(
-            &mut self.user.username,
-            "DIZZYSYNC_USERNAME",
-            fill_empty_only,
-        );
-        apply_string_env(
-            &mut self.user.password,
-            "DIZZYSYNC_PASSWORD",
-            fill_empty_only,
-        );
-        apply_string_env(
             &mut self.api.api_key,
             "DIZZYSYNC_WEB_PASSWORD",
             fill_empty_only,

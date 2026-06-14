@@ -1,6 +1,7 @@
 import { SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Typography } from "antd";
 import { useCallback } from "react";
+import { useI18n } from "../i18n.tsx";
 import type { DiscInfo, Track } from "../types.ts";
 
 interface AlbumDetailDrawerProps {
@@ -15,11 +16,12 @@ interface SyncAlbumButtonProps {
 }
 
 function SyncAlbumButton({ albumId, onSync }: SyncAlbumButtonProps) {
+  const { t } = useI18n();
   const syncAlbum = useCallback(() => onSync(albumId), [albumId, onSync]);
 
   return (
     <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
-      同步此专辑
+      {t("detail.sync")}
     </Button>
   );
 }
@@ -36,12 +38,14 @@ function renderTrack(track: Track, index: number) {
 }
 
 export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerProps) {
+  const { t } = useI18n();
+
   return (
     <Drawer
       destroyOnHidden={true}
       extra={album ? <SyncAlbumButton albumId={album.id} onSync={onSync} /> : null}
       open={Boolean(album)}
-      title={album?.title ?? "专辑详情"}
+      title={album?.title ?? t("detail.title")}
       width={720}
       onClose={onClose}
     >
@@ -52,10 +56,14 @@ export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerP
           ) : null}
           <Descriptions bordered={true} column={1} size="small">
             <Descriptions.Item label="ID">{album.id}</Descriptions.Item>
-            <Descriptions.Item label="厂牌">{album.label}</Descriptions.Item>
-            <Descriptions.Item label="发布日期">{album.release_date ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label="特典">{album.hasgift ? "有" : "无"}</Descriptions.Item>
-            <Descriptions.Item label="标签">
+            <Descriptions.Item label={t("album.label")}>{album.label}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.releaseDate")}>
+              {album.release_date ?? "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("detail.gift")}>
+              {album.hasgift ? t("detail.hasGift") : t("detail.noGift")}
+            </Descriptions.Item>
+            <Descriptions.Item label={t("detail.tags")}>
               {album.tags.map((tag) => (
                 <Tag key={tag}>{tag}</Tag>
               ))}
@@ -67,7 +75,7 @@ export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerP
           <List
             bordered={true}
             dataSource={album.tracks}
-            header={`曲目 (${album.tracks.length})`}
+            header={t("detail.tracks", { count: album.tracks.length })}
             renderItem={renderTrack}
           />
         </Space>

@@ -1,0 +1,278 @@
+import type { Locale } from "antd/es/locale";
+import enUs from "antd/locale/en_US";
+import zhCn from "antd/locale/zh_CN";
+import type { ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
+
+export type Language = "zh-CN" | "en-US";
+
+type TranslationValue = string | ((params: Record<string, string | number>) => string);
+type TranslationMap = Record<string, TranslationValue>;
+
+const translations: Record<Language, TranslationMap> = {
+  "zh-CN": {
+    "app.title": "DizzySync 控制台",
+    "app.heading": "音乐同步与配置管理",
+    "app.subtitle":
+      "通过 Web UI 完成首次设置、管理 Dizzylab 同步配置，并触发专辑同步。Docker 部署只需要在环境变量中提供 Web UI 密码。",
+    "app.refresh": "刷新",
+    "app.apiKey.placeholder": "Web UI 密码",
+    "app.error.title": "请求失败",
+    "app.language": "语言",
+    "auth.required": "需要 Web UI 密码",
+    "auth.requiredDescription":
+      "请输入 Docker 环境变量 DIZZYSYNC_WEB_PASSWORD 中设置的 Web UI 密码，然后点击刷新。",
+    "tabs.dashboard": "控制台",
+    "tabs.settings": "设置",
+    "tabs.onboarding": "开始使用",
+    "onboarding.title": "首次设置",
+    "onboarding.welcome":
+      "欢迎使用 DizzySync。请先填写 Dizzylab 登录信息并确认同步设置；保存前会验证凭据，验证成功后才会写入服务端配置。",
+    "onboarding.notReady": "服务尚未就绪",
+    "onboarding.notReadyDescription":
+      "请完成首次设置。Dizzylab 用户名/密码、下载格式、输出路径和同步行为均可在 Web UI 中维护。",
+    "status.loading": "正在读取服务状态...",
+    "status.title": "服务状态",
+    "status.api": "API 状态",
+    "status.login": "登录状态",
+    "status.ready": "已就绪",
+    "status.notReady": "未就绪",
+    "status.user": "用户",
+    "status.syncJob": "同步任务",
+    "status.idle": "空闲",
+    "status.lastError": "最近错误：{message}",
+    "sync.title": "同步控制",
+    "sync.info": "同一时间只允许一个同步任务运行。任务启动后可在状态区域查看运行状态。",
+    "sync.all": "同步全部已购专辑",
+    "album.title": "已购专辑",
+    "album.cover": "封面",
+    "album.name": "标题",
+    "album.label": "厂牌",
+    "album.actions": "操作",
+    "album.detail": "详情",
+    "album.sync": "同步",
+    "album.reload": "重新加载",
+    "detail.title": "专辑详情",
+    "detail.sync": "同步此专辑",
+    "detail.releaseDate": "发布日期",
+    "detail.gift": "特典",
+    "detail.hasGift": "有",
+    "detail.noGift": "无",
+    "detail.tags": "标签",
+    "detail.tracks": "曲目 ({count})",
+    "config.title": "设置",
+    "config.onboardingTitle": "首次设置",
+    "config.description": "配置文件：{path}。Dizzylab 密码和 Web UI 密码留空表示保持当前值。",
+    "config.unknown": "未知",
+    "config.username": "Dizzylab 用户名",
+    "config.usernameRequired": "请输入 Dizzylab 用户名",
+    "config.password": "Dizzylab 密码",
+    "config.passwordRequired": "请输入 Dizzylab 密码",
+    "config.passwordPlaceholder": "留空保持不变",
+    "config.webPassword": "Web UI 密码",
+    "config.webPasswordRequired": "请输入 Web UI 密码",
+    "config.webPasswordPlaceholder": "留空保持不变",
+    "config.formats": "下载格式",
+    "config.formatsRequired": "请选择至少一种格式",
+    "config.formatConflict": "128 和 320 不能同时选择，因为都会输出 .mp3 文件",
+    "config.outputDir": "输出目录",
+    "config.outputDirRequired": "请输入输出目录",
+    "config.directoryTemplate": "目录模板",
+    "config.directoryTemplateRequired": "请输入目录模板",
+    "config.maxConcurrentAlbums": "最大并发专辑数",
+    "config.maxConcurrentAlbumsRequired": "请输入不小于 1 的并发数",
+    "config.skipExisting": "跳过已存在目录",
+    "config.singleThreaded": "单线程",
+    "config.generateReadme": "生成 README",
+    "config.generateNfo": "生成 NFO",
+    "config.metadataOnly": "仅元数据",
+    "config.debug": "调试日志",
+    "config.save": "保存配置",
+    "config.saveOnboarding": "验证并完成设置",
+    "config.saved": "配置已验证并保存",
+    "guide.title": "配置指南",
+    "guide.credentials.title": "凭据保存位置",
+    "guide.credentials.description":
+      "Dizzylab 凭据和同步配置保存在服务端 config.toml 中；Docker Compose 默认将该文件放在 dizzysync_config 卷中。Docker 环境变量只需要提供 Web UI 密码。",
+    "guide.user.label": "登录凭据 [user]",
+    "guide.user.body":
+      "username 和 password 是 Dizzylab 登录凭据。首次设置和后续修改均在 Web UI 中完成。保存时会先登录 Dizzylab 验证，成功后才写入配置。",
+    "guide.download.label": "下载格式 [download]",
+    "guide.download.conflict": "128 和 320 都会输出 .mp3 文件，不能同时选择，否则文件名会冲突。",
+    "guide.paths.label": "路径与目录模板 [paths]",
+    "guide.paths.body":
+      "output_dir 是下载输出目录；Docker 中应保持为 /data。directory_template 支持变量：{album}、{label}、{authors}、{year}、{date}。默认模板会按“专辑名/@厂牌名”组织文件。",
+    "guide.behavior.label": "同步行为 [behavior]",
+    "guide.behavior.skipExisting": "skip_existing：跳过已存在目录。",
+    "guide.behavior.singleThreaded": "single_threaded：单线程下载，减轻服务器压力。",
+    "guide.behavior.maxConcurrent": "max_concurrent_albums：关闭单线程后同时处理的专辑数。",
+    "guide.behavior.metadata":
+      "generate_readme / generate_nfo：生成媒体库元数据文件。metadata_only：只下载封面、README、NFO，不下载音频。",
+    "guide.behavior.debug": "debug：输出更详细的 HTTP 调试日志。",
+    "guide.api.label": "API 与 Web 控制 [api]",
+    "guide.api.body":
+      "Rust 服务同时提供 Web GUI 和 /api/*。Docker 监听 0.0.0.0:8787，但只暴露一个端口。Web UI 密码会作为 API key 保存到配置中，用于保护远程控制接口。",
+  },
+  "en-US": {
+    "app.title": "DizzySync Console",
+    "app.heading": "Music Sync and Configuration",
+    "app.subtitle":
+      "Complete onboarding, manage Dizzylab sync settings, and start album syncs from the Web UI. Docker only needs the Web UI password as an environment variable.",
+    "app.refresh": "Refresh",
+    "app.apiKey.placeholder": "Web UI password",
+    "app.error.title": "Request failed",
+    "app.language": "Language",
+    "auth.required": "Web UI password required",
+    "auth.requiredDescription":
+      "Enter the Web UI password configured with the DIZZYSYNC_WEB_PASSWORD Docker environment variable, then refresh.",
+    "tabs.dashboard": "Dashboard",
+    "tabs.settings": "Settings",
+    "tabs.onboarding": "Get started",
+    "onboarding.title": "First-time setup",
+    "onboarding.welcome":
+      "Welcome to DizzySync. Enter your Dizzylab credentials and review sync settings. Credentials are validated before anything is saved.",
+    "onboarding.notReady": "Service is not ready",
+    "onboarding.notReadyDescription":
+      "Complete first-time setup. Dizzylab credentials, formats, paths, and sync behavior are all managed in the Web UI.",
+    "status.loading": "Loading service status...",
+    "status.title": "Service status",
+    "status.api": "API status",
+    "status.login": "Login status",
+    "status.ready": "Ready",
+    "status.notReady": "Not ready",
+    "status.user": "User",
+    "status.syncJob": "Sync job",
+    "status.idle": "Idle",
+    "status.lastError": "Last error: {message}",
+    "sync.title": "Sync controls",
+    "sync.info": "Only one sync job can run at a time. Watch the status card after a job starts.",
+    "sync.all": "Sync all purchased albums",
+    "album.title": "Purchased albums",
+    "album.cover": "Cover",
+    "album.name": "Title",
+    "album.label": "Label",
+    "album.actions": "Actions",
+    "album.detail": "Details",
+    "album.sync": "Sync",
+    "album.reload": "Reload",
+    "detail.title": "Album details",
+    "detail.sync": "Sync this album",
+    "detail.releaseDate": "Release date",
+    "detail.gift": "Gift",
+    "detail.hasGift": "Yes",
+    "detail.noGift": "No",
+    "detail.tags": "Tags",
+    "detail.tracks": "Tracks ({count})",
+    "config.title": "Settings",
+    "config.onboardingTitle": "First-time setup",
+    "config.description":
+      "Config file: {path}. Leave the Dizzylab password or Web UI password empty to keep the current value.",
+    "config.unknown": "Unknown",
+    "config.username": "Dizzylab username",
+    "config.usernameRequired": "Enter your Dizzylab username",
+    "config.password": "Dizzylab password",
+    "config.passwordRequired": "Enter your Dizzylab password",
+    "config.passwordPlaceholder": "Leave blank to keep current value",
+    "config.webPassword": "Web UI password",
+    "config.webPasswordRequired": "Enter the Web UI password",
+    "config.webPasswordPlaceholder": "Leave blank to keep current value",
+    "config.formats": "Download formats",
+    "config.formatsRequired": "Select at least one format",
+    "config.formatConflict": "128 and 320 cannot both be selected because both write .mp3 files",
+    "config.outputDir": "Output directory",
+    "config.outputDirRequired": "Enter the output directory",
+    "config.directoryTemplate": "Directory template",
+    "config.directoryTemplateRequired": "Enter the directory template",
+    "config.maxConcurrentAlbums": "Max concurrent albums",
+    "config.maxConcurrentAlbumsRequired": "Enter a value no less than 1",
+    "config.skipExisting": "Skip existing directories",
+    "config.singleThreaded": "Single threaded",
+    "config.generateReadme": "Generate README",
+    "config.generateNfo": "Generate NFO",
+    "config.metadataOnly": "Metadata only",
+    "config.debug": "Debug logs",
+    "config.save": "Save configuration",
+    "config.saveOnboarding": "Validate and finish setup",
+    "config.saved": "Configuration validated and saved",
+    "guide.title": "Configuration guide",
+    "guide.credentials.title": "Where credentials are stored",
+    "guide.credentials.description":
+      "Dizzylab credentials and sync settings are stored in the server-side config.toml. Docker Compose stores it in the dizzysync_config volume by default. Docker only needs the Web UI password as an environment variable.",
+    "guide.user.label": "Login credentials [user]",
+    "guide.user.body":
+      "username and password are your Dizzylab login credentials. Initial setup and future changes happen in the Web UI. Saving validates the credentials against Dizzylab before writing config.",
+    "guide.download.label": "Download formats [download]",
+    "guide.download.conflict":
+      "128 and 320 both output .mp3 files and cannot be selected together.",
+    "guide.paths.label": "Paths and directory template [paths]",
+    "guide.paths.body":
+      "output_dir is the download directory; keep it as /data in Docker. directory_template supports {album}, {label}, {authors}, {year}, and {date}. The default organizes files by album/@label.",
+    "guide.behavior.label": "Sync behavior [behavior]",
+    "guide.behavior.skipExisting": "skip_existing: skip directories that already exist.",
+    "guide.behavior.singleThreaded":
+      "single_threaded: download one album at a time to reduce server pressure.",
+    "guide.behavior.maxConcurrent":
+      "max_concurrent_albums: number of albums processed at once when single-threaded mode is off.",
+    "guide.behavior.metadata":
+      "generate_readme / generate_nfo: generate media-library metadata. metadata_only: download covers, README, and NFO only, not audio.",
+    "guide.behavior.debug": "debug: print more detailed HTTP debug logs.",
+    "guide.api.label": "API and Web control [api]",
+    "guide.api.body":
+      "The Rust service provides both the Web GUI and /api/*. Docker listens on 0.0.0.0:8787 and exposes only one port. The Web UI password is saved as the API key to protect remote control access.",
+  },
+};
+
+interface I18nContextValue {
+  language: Language;
+  antdLocale: Locale;
+  setLanguage: (language: Language) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+const languageStorageKey = "dizzysync.language";
+
+function detectInitialLanguage(): Language {
+  const saved = globalThis.localStorage?.getItem(languageStorageKey);
+  return saved === "en-US" ? "en-US" : "zh-CN";
+}
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguageState] = useState<Language>(detectInitialLanguage);
+
+  const setLanguage = useCallback((nextLanguage: Language) => {
+    setLanguageState(nextLanguage);
+    globalThis.localStorage?.setItem(languageStorageKey, nextLanguage);
+  }, []);
+
+  const t = useCallback(
+    (key: string, params: Record<string, string | number> = {}) => {
+      const value = translations[language][key] ?? translations["zh-CN"][key] ?? key;
+      if (typeof value === "function") {
+        return value(params);
+      }
+      return value.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`));
+    },
+    [language],
+  );
+
+  const value = useMemo<I18nContextValue>(
+    () => ({
+      language,
+      antdLocale: language === "zh-CN" ? zhCn : enUs,
+      setLanguage,
+      t,
+    }),
+    [language, setLanguage, t],
+  );
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n() {
+  const context = useContext(I18nContext);
+  if (!context) {
+    throw new Error("useI18n must be used within I18nProvider");
+  }
+  return context;
+}
