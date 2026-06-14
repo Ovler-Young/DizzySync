@@ -1,9 +1,10 @@
-import { KeyOutlined, ReloadOutlined } from "@ant-design/icons";
+import { LoginOutlined, ReloadOutlined } from "@ant-design/icons";
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
+  Form,
   Input,
   Layout,
   Select,
@@ -11,13 +12,13 @@ import {
   Tabs,
   Typography,
 } from "antd";
-import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, api, apiKeyStorageKey } from "./api.ts";
 import { AlbumDetailDrawer } from "./components/AlbumDetailDrawer.tsx";
 import { AlbumTable } from "./components/AlbumTable.tsx";
 import { ConfigForm } from "./components/ConfigForm.tsx";
 import { ConfigGuide } from "./components/ConfigGuide.tsx";
+import { LogViewer } from "./components/LogViewer.tsx";
 import { StatusCard } from "./components/StatusCard.tsx";
 import { SyncControls } from "./components/SyncControls.tsx";
 import { type Language, useI18n } from "./i18n.tsx";
@@ -30,6 +31,10 @@ const languageOptions: Array<{ label: string; value: Language }> = [
   { label: "中文", value: "zh-CN" },
   { label: "English", value: "en-US" },
 ];
+
+interface LoginValues {
+  apiKey: string;
+}
 
 export function App() {
   const { message } = AntApp.useApp();
@@ -174,16 +179,17 @@ export function App() {
     [message, refreshAll, saveApiKey],
   );
 
+  const login = useCallback(
+    async (values: LoginValues) => {
+      saveApiKey(values.apiKey);
+      await refreshAll();
+    },
+    [refreshAll, saveApiKey],
+  );
+
   const closeAlbumDetail = useCallback(() => {
     setDetail(null);
   }, []);
-
-  const handleApiKeyChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      saveApiKey(event.target.value);
-    },
-    [saveApiKey],
-  );
 
   const onboarding = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -193,8 +199,10 @@ export function App() {
         message={t("onboarding.notReady")}
         description={t("onboarding.notReadyDescription")}
       />
-      <ConfigForm config={config} mode="onboarding" onSaved={handleConfigSaved} />
-      <ConfigGuide />
+      <div className="settings-grid">
+        <ConfigForm config={config} mode="onboarding" onSaved={handleConfigSaved} />
+        <ConfigGuide />
+      </div>
     </Space>
   );
 
@@ -228,13 +236,18 @@ export function App() {
         ),
       },
       {
+        key: "logs",
+        label: t("tabs.logs"),
+        children: <LogViewer />,
+      },
+      {
         key: "settings",
         label: t("tabs.settings"),
         children: (
-          <Space direction="vertical" size="large" style={{ width: "100%" }}>
-            <ConfigGuide />
+          <div className="settings-grid">
             <ConfigForm config={config} onSaved={handleConfigSaved} />
-          </Space>
+            <ConfigGuide />
+          </div>
         ),
       },
     ],
@@ -255,9 +268,52 @@ export function App() {
     ],
   );
 
+  if (authRequired) {
+    return (
+      <Layout className="auth-layout">
+        <div className="auth-language">
+          <Select
+            aria-label={t("app.language")}
+            options={languageOptions}
+            style={{ width: 120 }}
+            value={language}
+            onChange={setLanguage}
+          />
+        </div>
+        <Card className="login-card">
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <div>
+              <Title level={2}>{t("auth.loginTitle")}</Title>
+              <Text type="secondary">{t("auth.requiredDescription")}</Text>
+            </div>
+            {error ? <Alert showIcon={true} type="error" message={error} /> : null}
+            <Form<LoginValues> initialValues={{ apiKey }} layout="vertical" onFinish={login}>
+              <Form.Item
+                label={t("app.apiKey.placeholder")}
+                name="apiKey"
+                rules={[{ required: true, message: t("config.webPasswordRequired") }]}
+              >
+                <Input.Password autoFocus={true} autoComplete="current-password" />
+              </Form.Item>
+              <Button
+                block={true}
+                htmlType="submit"
+                icon={<LoginOutlined />}
+                loading={loading}
+                type="primary"
+              >
+                {t("auth.login")}
+              </Button>
+            </Form>
+          </Space>
+        </Card>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <Header style={{ alignItems: "center", display: "flex", justifyContent: "space-between" }}>
+      <Header className="app-header">
         <div className="app-logo">{t("app.title")}</div>
         <Space>
           <Select
@@ -266,14 +322,6 @@ export function App() {
             style={{ width: 120 }}
             value={language}
             onChange={setLanguage}
-          />
-          <Input.Password
-            allowClear={true}
-            placeholder={t("app.apiKey.placeholder")}
-            prefix={<KeyOutlined />}
-            style={{ width: 280 }}
-            value={apiKey}
-            onChange={handleApiKeyChange}
           />
           <Button icon={<ReloadOutlined />} loading={loading} onClick={refreshAll}>
             {t("app.refresh")}
@@ -290,14 +338,6 @@ export function App() {
               {needsOnboarding ? t("onboarding.welcome") : t("app.subtitle")}
             </Text>
           </div>
-          {authRequired ? (
-            <Alert
-              showIcon={true}
-              type="warning"
-              message={t("auth.required")}
-              description={t("auth.requiredDescription")}
-            />
-          ) : null}
           {error ? (
             <Alert
               showIcon={true}
