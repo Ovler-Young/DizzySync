@@ -1,6 +1,8 @@
 import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import {
+  Alert,
   App,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -48,6 +50,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
   const isOnboarding = mode === "onboarding";
+  const outputDirLocked = Boolean(config?.config.paths.output_dir_locked);
 
   const formatOptions = useMemo(
     () => [
@@ -57,6 +60,17 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       { label: "gift", value: "gift" },
     ],
     [],
+  );
+
+  const templateOptions = useMemo(
+    () => [
+      { label: t("config.template.default"), value: "{album}/@{label}" },
+      { label: t("config.template.labelAlbum"), value: "@{label}/{album}" },
+      { label: t("config.template.yearAlbum"), value: "{year}/{album}" },
+      { label: t("config.template.artistAlbum"), value: "{authors}/{album}" },
+      { label: t("config.template.dateAlbum"), value: "{date} - {album}" },
+    ],
+    [t],
   );
 
   const initialValues = useMemo<ConfigFormValues | undefined>(() => {
@@ -76,7 +90,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       directoryTemplate: config.config.paths.directory_template,
       skipExisting: config.config.behavior.skip_existing,
       singleThreaded: config.config.behavior.single_threaded,
-      maxConcurrentAlbums: config.config.behavior.max_concurrent_albums,
+      maxConcurrentAlbums: config.config.behavior.max_concurrent_albums || 1,
       generateReadme: config.config.behavior.generate_readme,
       generateNfo: config.config.behavior.generate_nfo,
       debug: config.config.behavior.debug,
@@ -109,13 +123,13 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           formats: values.formats,
         },
         paths: {
-          output_dir: values.outputDir.trim(),
+          ...(outputDirLocked ? {} : { output_dir: values.outputDir.trim() }),
           directory_template: values.directoryTemplate.trim(),
         },
         behavior: {
           skip_existing: values.skipExisting,
           single_threaded: values.singleThreaded,
-          max_concurrent_albums: values.maxConcurrentAlbums,
+          max_concurrent_albums: values.maxConcurrentAlbums || 1,
           generate_readme: values.generateReadme,
           generate_nfo: values.generateNfo,
           debug: values.debug,
@@ -140,7 +154,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
         setSaving(false);
       }
     },
-    [form, message, onSaved, t],
+    [form, message, onSaved, outputDirLocked, t],
   );
 
   return (
@@ -148,6 +162,14 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       <Typography.Paragraph type="secondary">
         {t("config.description", { path: config?.config_path ?? t("config.unknown") })}
       </Typography.Paragraph>
+      {outputDirLocked ? (
+        <Alert
+          showIcon={true}
+          style={{ marginBottom: 16 }}
+          type="info"
+          message={t("config.outputDirLocked")}
+        />
+      ) : null}
       <Form form={form} layout="vertical" onFinish={submit}>
         <Form.List name="users">
           {(fields, { add, remove }) => (
@@ -225,15 +247,27 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
             label={t("config.outputDir")}
             name="outputDir"
             rules={[{ required: true, message: t("config.outputDirRequired") }]}
+            tooltip={outputDirLocked ? t("config.outputDirLocked") : undefined}
           >
-            <Input style={{ width: 320 }} />
+            <Input disabled={outputDirLocked} style={{ width: 320 }} />
           </Form.Item>
           <Form.Item
             label={t("config.directoryTemplate")}
             name="directoryTemplate"
             rules={[{ required: true, message: t("config.directoryTemplateRequired") }]}
           >
-            <Input style={{ width: 320 }} />
+            <AutoComplete
+              options={templateOptions}
+              filterOption={(inputValue, option) =>
+                String(option?.label ?? "")
+                  .toLowerCase()
+                  .includes(inputValue.toLowerCase()) ||
+                String(option?.value ?? "")
+                  .toLowerCase()
+                  .includes(inputValue.toLowerCase())
+              }
+              style={{ width: 360 }}
+            />
           </Form.Item>
           <Form.Item
             label={t("config.maxConcurrentAlbums")}
