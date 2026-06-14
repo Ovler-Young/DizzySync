@@ -11,6 +11,15 @@ export interface StatusResponse {
   user: UserInfo | null;
   users: UserInfo[];
   job: JobState;
+  schedule: ScheduleState;
+  last_error: string | null;
+}
+
+export interface ScheduleState {
+  enabled: boolean;
+  cron: string;
+  next_run: number | null;
+  last_run: number | null;
   last_error: string | null;
 }
 
@@ -68,6 +77,7 @@ export interface PublicConfig {
   download: PublicDownloadConfig;
   paths: PublicPathsConfig;
   behavior: PublicBehaviorConfig;
+  schedule: PublicScheduleConfig;
   api: PublicApiConfig;
 }
 
@@ -97,6 +107,11 @@ export interface PublicBehaviorConfig {
   metadata_only: boolean;
 }
 
+export interface PublicScheduleConfig {
+  enabled: boolean;
+  cron: string;
+}
+
 export interface PublicApiConfig {
   bind: string;
   has_api_key: boolean;
@@ -119,6 +134,7 @@ export interface UpdateConfigRequest {
     directory_template?: string;
   };
   behavior?: Partial<Omit<PublicBehaviorConfig, "max_concurrent_albums_locked">>;
+  schedule?: Partial<PublicScheduleConfig>;
   api?: {
     api_key?: string;
   };

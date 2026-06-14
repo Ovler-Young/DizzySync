@@ -62,6 +62,11 @@ export function ConfigGuide() {
             ),
           },
           {
+            key: "schedule",
+            label: t("guide.schedule.label"),
+            children: <Paragraph>{t("guide.schedule.body")}</Paragraph>,
+          },
+          {
             key: "api",
             label: t("guide.api.label"),
             children: <Paragraph>{t("guide.api.body")}</Paragraph>,

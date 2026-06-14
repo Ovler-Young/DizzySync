@@ -43,6 +43,13 @@ const translations: Record<Language, TranslationMap> = {
     "status.user": "账号",
     "status.syncJob": "同步任务",
     "status.idle": "空闲",
+    "status.schedule": "自动同步",
+    "status.scheduleEnabled": "已启用",
+    "status.scheduleDisabled": "已关闭",
+    "status.scheduleCron": "Cron 表达式",
+    "status.nextRun": "下次运行",
+    "status.lastRun": "上次运行",
+    "status.scheduleLastError": "自动同步错误：{message}",
     "status.lastError": "最近错误：{message}",
     "sync.title": "同步控制",
     "sync.info": "同一时间只允许一个同步任务运行。任务启动后可在状态区域查看运行状态。",
@@ -98,6 +105,11 @@ const translations: Record<Language, TranslationMap> = {
     "config.generateNfo": "生成 NFO",
     "config.metadataOnly": "仅元数据",
     "config.debug": "调试日志",
+    "config.scheduleEnabled": "启用自动同步",
+    "config.scheduleCron": "自动同步 Cron",
+    "config.scheduleCronRequired": "请输入 cron 表达式",
+    "config.scheduleCronHelp":
+      "使用 7 段 cron：秒 分 时 日 月 周 年。例如 0 0 3 * * * * 表示每天 03:00 同步。",
     "config.save": "保存配置",
     "config.saveOnboarding": "验证并完成设置",
     "config.saved": "配置已验证并保存",
@@ -124,6 +136,9 @@ const translations: Record<Language, TranslationMap> = {
     "guide.behavior.metadata":
       "generate_readme / generate_nfo：生成媒体库元数据文件。metadata_only：只下载封面、README、NFO，不下载音频。",
     "guide.behavior.debug": "debug：输出更详细的 HTTP 调试日志。",
+    "guide.schedule.label": "自动同步 [schedule]",
+    "guide.schedule.body":
+      "enabled 开启后，Web GUI 模式会按 cron 表达式自动执行全量同步；表达式使用 7 段格式：秒 分 时 日 月 周 年。",
     "guide.api.label": "API 与 Web 控制 [api]",
     "guide.api.body":
       "Rust 服务同时提供 Web GUI 和 /api/*。Docker 监听 0.0.0.0:8787，但只暴露一个端口。Web UI 密码会作为 API key 保存到配置中，用于保护远程控制接口。",
@@ -161,6 +176,13 @@ const translations: Record<Language, TranslationMap> = {
     "status.user": "Accounts",
     "status.syncJob": "Sync job",
     "status.idle": "Idle",
+    "status.schedule": "Auto sync",
+    "status.scheduleEnabled": "Enabled",
+    "status.scheduleDisabled": "Disabled",
+    "status.scheduleCron": "Cron expression",
+    "status.nextRun": "Next run",
+    "status.lastRun": "Last run",
+    "status.scheduleLastError": "Auto sync error: {message}",
     "status.lastError": "Last error: {message}",
     "sync.title": "Sync controls",
     "sync.info": "Only one sync job can run at a time. Watch the status card after a job starts.",
@@ -218,6 +240,11 @@ const translations: Record<Language, TranslationMap> = {
     "config.generateNfo": "Generate NFO",
     "config.metadataOnly": "Metadata only",
     "config.debug": "Debug logs",
+    "config.scheduleEnabled": "Enable auto sync",
+    "config.scheduleCron": "Auto-sync cron",
+    "config.scheduleCronRequired": "Enter a cron expression",
+    "config.scheduleCronHelp":
+      "Use 7 fields: second minute hour day month weekday year. Example: 0 0 3 * * * * runs daily at 03:00.",
     "config.save": "Save configuration",
     "config.saveOnboarding": "Validate and finish setup",
     "config.saved": "Configuration validated and saved",
@@ -248,6 +275,9 @@ const translations: Record<Language, TranslationMap> = {
     "guide.behavior.metadata":
       "generate_readme / generate_nfo: generate media-library metadata. metadata_only: download covers, README, and NFO only, not audio.",
     "guide.behavior.debug": "debug: print more detailed HTTP debug logs.",
+    "guide.schedule.label": "Auto sync [schedule]",
+    "guide.schedule.body":
+      "When enabled is true, Web GUI mode runs a full sync automatically according to the cron expression. The expression uses 7 fields: second minute hour day month weekday year.",
     "guide.api.label": "API and Web control [api]",
     "guide.api.body":
       "The Rust service provides both the Web GUI and /api/*. Docker listens on 0.0.0.0:8787 and exposes only one port. The Web UI password is saved as the API key to protect remote control access.",
