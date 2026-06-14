@@ -136,7 +136,8 @@ fn album_state_from_dir(
 
     let mut missing_formats = formats
         .iter()
-        .filter_map(|(format, present)| (!present).then(|| format.clone()))
+        .filter(|(_, present)| !*present)
+        .map(|(format, _)| format.clone())
         .collect::<Vec<_>>();
     missing_formats.sort();
 
@@ -184,7 +185,8 @@ fn track_state_from_dir(
     let complete = !formats.is_empty() && formats.values().all(|exists| *exists);
     let mut missing_formats = formats
         .iter()
-        .filter_map(|(format, present)| (!present).then(|| format.clone()))
+        .filter(|(_, present)| !*present)
+        .map(|(format, _)| format.clone())
         .collect::<Vec<_>>();
     missing_formats.sort();
 
