@@ -65,10 +65,12 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
     }
 
     return {
-      users: (config.config.users.length ? config.config.users : [config.config.user]).map((user) => ({
-        username: user.username,
-        password: "",
-      })),
+      users: (config.config.users.length > 0 ? config.config.users : [config.config.user]).map(
+        (user) => ({
+          username: user.username,
+          password: "",
+        }),
+      ),
       formats: config.config.download.formats,
       outputDir: config.config.paths.output_dir,
       directoryTemplate: config.config.paths.directory_template,

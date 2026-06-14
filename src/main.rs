@@ -259,7 +259,10 @@ async fn main() -> Result<()> {
         };
 
         if let Ok(user_info) = client.get_my_info(&token).await {
-            info!("账号 {} 已登录为: {} (UID: {})", account_label, user_info.username, user_info.uid);
+            info!(
+                "账号 {} 已登录为: {} (UID: {})",
+                account_label, user_info.username, user_info.uid
+            );
         }
 
         let downloader = Downloader::new(client.clone(), config.clone(), token.clone());
@@ -277,7 +280,10 @@ async fn main() -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    info!("账号 {} 未找到或无法访问专辑 {}: {}", account_label, album_id, e);
+                    info!(
+                        "账号 {} 未找到或无法访问专辑 {}: {}",
+                        account_label, album_id, e
+                    );
                 }
             }
             continue;

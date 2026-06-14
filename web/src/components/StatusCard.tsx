@@ -1,4 +1,5 @@
 import { Alert, Card, Descriptions, Tag, Typography } from "antd";
+import type { ReactNode } from "react";
 import { useI18n } from "../i18n.tsx";
 import type { StatusResponse, UserInfo } from "../types.ts";
 
@@ -43,7 +44,7 @@ export function StatusCard({ status }: StatusCardProps) {
     userText = users.map((user) => `${user.username} (${user.uid})`).join(", ");
   }
 
-  let lastError = null;
+  let lastError: ReactNode = null;
   if (status.last_error) {
     lastError = (
       <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
