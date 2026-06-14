@@ -433,6 +433,7 @@ async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
     let sessions = ensure_logged_in(&state).await?;
     let config = state.config.read().await.clone();
     let mut failures = Vec::new();
+    let mut album_found = false;
 
     for session in sessions {
         let account_label = account_label(&session.account);
@@ -445,6 +446,7 @@ async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
         if let Some(album_id) = &album_id {
             match session.client.get_disc_info(album_id, &session.token).await {
                 Ok(disc_info) => {
+                    album_found = true;
                     info!("账号 {} 开始同步专辑 {}", account_label, album_id);
                     if let Err(e) = downloader.download_album(&disc_info).await {
                         failures.push(format!("{account_label}: {e}"));
@@ -468,6 +470,10 @@ async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
                 Err(e) => failures.push(format!("{account_label}: {e}")),
             }
         }
+    }
+
+    if album_id.is_some() && !album_found {
+        failures.push("所有账号均未找到或无法访问指定专辑".to_string());
     }
 
     if failures.is_empty() {
@@ -547,18 +553,20 @@ fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) {
         let existing = config.accounts();
         let next_users = users
             .into_iter()
-            .enumerate()
-            .map(|(index, user)| {
-                let mut next = existing.get(index).cloned().unwrap_or_default();
-                if let Some(username) = user.username {
-                    next.username = username;
-                }
-                if let Some(password) = user.password {
-                    if !password.is_empty() {
-                        next.password = password;
-                    }
-                }
-                next
+            .map(|user| {
+                let username = user.username.unwrap_or_default();
+                let password = user
+                    .password
+                    .filter(|password| !password.is_empty())
+                    .or_else(|| {
+                        existing
+                            .iter()
+                            .find(|account| account.username == username)
+                            .map(|account| account.password.clone())
+                    })
+                    .unwrap_or_default();
+
+                UserConfig { username, password }
             })
             .collect::<Vec<_>>();
         config.set_accounts(next_users);

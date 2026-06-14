@@ -240,6 +240,7 @@ async fn main() -> Result<()> {
     let dry_run = matches.get_flag("dry-run");
     let requested_album_id = matches.get_one::<String>("id").cloned();
     let mut failures = Vec::new();
+    let mut requested_album_found = false;
 
     for account in accounts {
         let account_label = if account.username.trim().is_empty() {
@@ -270,6 +271,7 @@ async fn main() -> Result<()> {
             info!("账号 {} 获取指定专辑: {}", account_label, album_id);
             match client.get_disc_info(album_id, &token).await {
                 Ok(disc_info) => {
+                    requested_album_found = true;
                     if dry_run {
                         println!(
                             "[{}] 1. {} - {} ({})",
