@@ -436,7 +436,11 @@ async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
 
     for session in sessions {
         let account_label = account_label(&session.account);
-        let downloader = Downloader::new(session.client.clone(), config.clone(), session.token.clone());
+        let downloader = Downloader::new(
+            session.client.clone(),
+            config.clone(),
+            session.token.clone(),
+        );
 
         if let Some(album_id) = &album_id {
             match session.client.get_disc_info(album_id, &session.token).await {
@@ -447,7 +451,10 @@ async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    info!("账号 {} 未找到或无法访问专辑 {}: {}", account_label, album_id, e);
+                    info!(
+                        "账号 {} 未找到或无法访问专辑 {}: {}",
+                        account_label, album_id, e
+                    );
                 }
             }
         } else {
@@ -624,9 +631,9 @@ pub fn validate_credentials(config: &Config) -> Result<()> {
 fn has_credentials(config: &Config) -> bool {
     let accounts = config.accounts();
     !accounts.is_empty()
-        && accounts
-            .iter()
-            .all(|account| !account.username.trim().is_empty() && !account.password.trim().is_empty())
+        && accounts.iter().all(|account| {
+            !account.username.trim().is_empty() && !account.password.trim().is_empty()
+        })
 }
 
 pub fn validate_formats(config: &Config) -> Result<()> {

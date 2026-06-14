@@ -151,8 +151,16 @@ impl Config {
         );
         apply_string_env(&mut self.api.api_key, "DIZZYSYNC_API_KEY", fill_empty_only);
 
-        apply_string_env(&mut self.user.username, "DIZZYSYNC_USERNAME", fill_empty_only);
-        apply_string_env(&mut self.user.password, "DIZZYSYNC_PASSWORD", fill_empty_only);
+        apply_string_env(
+            &mut self.user.username,
+            "DIZZYSYNC_USERNAME",
+            fill_empty_only,
+        );
+        apply_string_env(
+            &mut self.user.password,
+            "DIZZYSYNC_PASSWORD",
+            fill_empty_only,
+        );
 
         if let Ok(output_dir) = std::env::var("DIZZYSYNC_OUTPUT_DIR") {
             if !fill_empty_only || self.paths.output_dir.as_os_str().is_empty() {
