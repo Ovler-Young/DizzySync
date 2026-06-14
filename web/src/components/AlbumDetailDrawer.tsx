@@ -1,4 +1,9 @@
-import { ExportOutlined, SyncOutlined } from "@ant-design/icons";
+import {
+  ExportOutlined,
+  FolderOpenOutlined,
+  PlayCircleOutlined,
+  SyncOutlined,
+} from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Tooltip, Typography } from "antd";
 import { useCallback } from "react";
 import { localFileUrl } from "../api.ts";
@@ -7,7 +12,9 @@ import type { DiscInfo, Track } from "../types.ts";
 
 interface AlbumDetailDrawerProps {
   album: DiscInfo | null;
+  currentTrackKey?: string | null;
   onClose: () => void;
+  onPlayTrack: (album: DiscInfo, track: Track) => void;
   onSync: (id: string) => void;
 }
 
@@ -36,33 +43,74 @@ function AlbumActions({ albumId, onSync }: AlbumActionsProps) {
 function renderTrackStatus(track: Track, t: (key: string) => string) {
   const { local } = track;
   const downloaded = local ? local.downloaded : false;
-  const label = downloaded ? t("album.localDownloaded") : t("album.localNotDownloaded");
-  const tag = <Tag color={downloaded ? "success" : "default"}>{label}</Tag>;
+  const hasMedia = local ? local.has_media || local.paths.length > 0 : false;
+  let label = t("album.localNotDownloaded");
+  let color = "default";
+
+  if (downloaded) {
+    label = t("album.localDownloaded");
+    color = "success";
+  } else if (hasMedia) {
+    label = t("album.localPartial");
+    color = "processing";
+  }
+
+  const tag = <Tag color={color}>{label}</Tag>;
   if (!local || local.paths.length === 0) {
     return tag;
   }
   return <Tooltip title={local.paths.join("\n")}>{tag}</Tooltip>;
 }
 
-function renderTrackMedia(track: Track, t: (key: string) => string) {
+function trackKey(track: Track) {
+  return `${track.discid}:${track.id}`;
+}
+
+interface TrackActionsProps {
+  album: DiscInfo;
+  currentTrackKey?: string | null;
+  track: Track;
+  onPlayTrack: (album: DiscInfo, track: Track) => void;
+}
+
+function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActionsProps) {
+  const { t } = useI18n();
   const path = track.local?.paths[0];
-  if (!path) {
-    return null;
-  }
-  const src = localFileUrl(path);
+  const src = path ? localFileUrl(path) : undefined;
+  const playable = Boolean(path);
+  const isCurrent = currentTrackKey === trackKey(track);
+  const playTrack = useCallback(() => onPlayTrack(album, track), [album, onPlayTrack, track]);
+
   return (
-    <Space className="track-media" direction="vertical" size={4}>
-      <audio controls={true} preload="none" src={src}>
-        <track kind="captions" />
-      </audio>
-      <Button href={src} size="small" target="_blank">
-        {t("detail.openLocalFile")}
+    <Space className="track-actions" wrap={true}>
+      <Button
+        disabled={!playable}
+        icon={<PlayCircleOutlined />}
+        size="small"
+        type={isCurrent ? "primary" : "default"}
+        onClick={playTrack}
+      >
+        {isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
       </Button>
+      {src ? (
+        <Button href={src} icon={<FolderOpenOutlined />} size="small" target="_blank">
+          {t("detail.openLocalFile")}
+        </Button>
+      ) : null}
     </Space>
   );
 }
 
-function renderTrack(track: Track, index: number, t: (key: string) => string) {
+interface RenderTrackOptions {
+  album: DiscInfo;
+  currentTrackKey?: string | null;
+  index: number;
+  onPlayTrack: (album: DiscInfo, track: Track) => void;
+  t: (key: string) => string;
+  track: Track;
+}
+
+function renderTrack({ album, currentTrackKey, index, onPlayTrack, t, track }: RenderTrackOptions) {
   return (
     <List.Item extra={renderTrackStatus(track, t)}>
       <Space direction="vertical" size={6} style={{ width: "100%" }}>
@@ -70,13 +118,24 @@ function renderTrack(track: Track, index: number, t: (key: string) => string) {
           {String(index + 1).padStart(2, "0")}. {track.title}
           {track.authers ? ` — ${track.authers}` : ""}
         </Typography.Text>
-        {renderTrackMedia(track, t)}
+        <TrackActions
+          album={album}
+          currentTrackKey={currentTrackKey}
+          track={track}
+          onPlayTrack={onPlayTrack}
+        />
       </Space>
     </List.Item>
   );
 }
 
-export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerProps) {
+export function AlbumDetailDrawer({
+  album,
+  currentTrackKey,
+  onClose,
+  onPlayTrack,
+  onSync,
+}: AlbumDetailDrawerProps) {
   const { t } = useI18n();
 
   return (
@@ -134,7 +193,9 @@ export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerP
             bordered={true}
             dataSource={album.tracks}
             header={t("detail.tracks", { count: album.tracks.length })}
-            renderItem={(track, index) => renderTrack(track, index, t)}
+            renderItem={(track, index) =>
+              renderTrack({ album, currentTrackKey, index, onPlayTrack, t, track })
+            }
           />
         </Space>
       ) : null}

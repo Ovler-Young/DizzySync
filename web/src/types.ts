@@ -38,12 +38,17 @@ export interface LocalAlbumState {
   audio_files: number;
   expected_tracks: number;
   downloaded_tracks: number;
+  complete_tracks: number;
+  has_media: boolean;
+  complete: boolean;
   gift_exists: boolean;
   formats: Record<string, boolean>;
 }
 
 export interface LocalTrackState {
   downloaded: boolean;
+  has_media: boolean;
+  complete: boolean;
   formats: Record<string, boolean>;
   paths: string[];
 }

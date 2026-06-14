@@ -73,11 +73,15 @@ export interface LogFilters {
   end?: string;
 }
 
-function queryString(filters: LogFilters): string {
+export interface AlbumRequestOptions {
+  refresh?: boolean;
+}
+
+function queryString<T extends object>(filters: T): string {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
+  for (const [key, value] of Object.entries(filters) as [string, string | boolean | undefined][]) {
     if (value) {
-      params.set(key, value);
+      params.set(key, String(value));
     }
   }
   const query = params.toString();
@@ -98,8 +102,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  albums: () => request<DiscListItem[]>("/api/albums"),
-  album: (id: string) => request<DiscInfo>(`/api/albums/${encodeURIComponent(id)}`),
+  albums: (options: AlbumRequestOptions = {}) =>
+    request<DiscListItem[]>(`/api/albums${queryString(options)}`),
+  album: (id: string, options: AlbumRequestOptions = {}) =>
+    request<DiscInfo>(`/api/albums/${encodeURIComponent(id)}${queryString(options)}`),
   syncAll: () =>
     request<ApiMessage>("/api/sync", {
       method: "POST",

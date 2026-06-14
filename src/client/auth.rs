@@ -74,7 +74,10 @@ impl DizzylabClient {
             ));
         }
         if self.debug {
-            debug!("API 登录响应: {}", api_resp_text);
+            debug!(
+                "API 登录响应: {}",
+                super::redact_text_for_log(&api_resp_text)
+            );
         }
 
         let api_resp_json: serde_json::Value = serde_json::from_str(&api_resp_text)?;

@@ -18,11 +18,16 @@ import { AlbumDetailDrawer } from "./components/AlbumDetailDrawer.tsx";
 import { AlbumTable } from "./components/AlbumTable.tsx";
 import { ConfigForm } from "./components/ConfigForm.tsx";
 import { ConfigGuide, type ConfigGuideSection } from "./components/ConfigGuide.tsx";
+import {
+  GlobalAudioPlayer,
+  type PlayerSelection,
+  type PlayerTrack,
+} from "./components/GlobalAudioPlayer.tsx";
 import { LogViewer } from "./components/LogViewer.tsx";
 import { StatusCard } from "./components/StatusCard.tsx";
 import { SyncControls } from "./components/SyncControls.tsx";
 import { type Language, useI18n } from "./i18n.tsx";
-import type { ConfigResponse, DiscInfo, DiscListItem, StatusResponse } from "./types.ts";
+import type { ConfigResponse, DiscInfo, DiscListItem, StatusResponse, Track } from "./types.ts";
 
 const { Footer, Header } = Layout;
 const { Title, Text } = Typography;
@@ -46,6 +51,8 @@ export function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [albums, setAlbums] = useState<DiscListItem[]>([]);
   const [detail, setDetail] = useState<DiscInfo | null>(null);
+  const [playerSelection, setPlayerSelection] = useState<PlayerSelection | null>(null);
+  const [playRequestId, setPlayRequestId] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -84,7 +91,7 @@ export function App() {
         throw caught;
       }
       if (nextStatus.ready) {
-        setAlbums(await api.albums());
+        setAlbums(await api.albums({ refresh: true }));
       } else {
         setAlbums([]);
         setDetail(null);
@@ -131,10 +138,10 @@ export function App() {
   }, [isRunning, loadStatus]);
 
   const showAlbum = useCallback(
-    async (id: string) => {
+    async (id: string, refresh = false) => {
       setLoading(true);
       try {
-        setDetail(await api.album(id));
+        setDetail(await api.album(id, { refresh }));
       } catch (caught) {
         message.error(caught instanceof Error ? caught.message : String(caught));
       } finally {
@@ -142,6 +149,53 @@ export function App() {
       }
     },
     [message],
+  );
+
+  const playableTracksForAlbum = useCallback(
+    (album: DiscInfo): PlayerTrack[] =>
+      album.tracks.flatMap((track) => {
+        const path = track.local?.paths[0];
+        if (!path) {
+          return [];
+        }
+        return [
+          {
+            key: `${track.discid}:${track.id}`,
+            albumId: album.id,
+            albumTitle: album.title,
+            trackId: track.id,
+            title: track.title,
+            authors: track.authers,
+            path,
+          },
+        ];
+      }),
+    [],
+  );
+
+  const selectPlayerIndex = useCallback((index: number) => {
+    setPlayerSelection((previous) => (previous ? { ...previous, index } : previous));
+  }, []);
+
+  const playAlbumTrack = useCallback(
+    (album: DiscInfo, track: Track) => {
+      const tracks = playableTracksForAlbum(album);
+      const selectedKey = `${track.discid}:${track.id}`;
+      const index = Math.max(
+        0,
+        tracks.findIndex((candidate) => candidate.key === selectedKey),
+      );
+      const requestId = playRequestId + 1;
+      setPlayRequestId(requestId);
+      setPlayerSelection({
+        albumId: album.id,
+        albumTitle: album.title,
+        tracks,
+        index,
+        requestId,
+      });
+    },
+    [playRequestId, playableTracksForAlbum],
   );
 
   const syncAll = useCallback(async () => {
@@ -258,7 +312,7 @@ export function App() {
               albums={albums}
               loading={loading}
               onRefresh={refreshAll}
-              onShow={showAlbum}
+              onShow={(id) => showAlbum(id, true)}
               onSync={syncAlbum}
               syncDisabled={Boolean(isRunning)}
             />
@@ -380,11 +434,17 @@ export function App() {
             <Typography.Link href="https://www.dizzylab.net" target="_blank">
               {t("footer.dizzylab")}
             </Typography.Link>
-            <Text type="secondary">{t("footer.credit")}</Text>
           </Space>
         </Space>
       </Footer>
-      <AlbumDetailDrawer album={detail} onClose={closeAlbumDetail} onSync={syncAlbum} />
+      <AlbumDetailDrawer
+        album={detail}
+        currentTrackKey={playerSelection?.tracks[playerSelection.index]?.key}
+        onClose={closeAlbumDetail}
+        onPlayTrack={playAlbumTrack}
+        onSync={syncAlbum}
+      />
+      <GlobalAudioPlayer selection={playerSelection} onSelectIndex={selectPlayerIndex} />
     </Layout>
   );
 }

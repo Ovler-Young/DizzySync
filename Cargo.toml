@@ -12,6 +12,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["json", "c
 
 # 异步运行时
 tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 
 # 序列化和配置解析
 serde = { version = "1.0", features = ["derive"] }

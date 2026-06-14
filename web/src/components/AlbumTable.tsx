@@ -68,7 +68,7 @@ function hasPartialLocalState(album: DiscListItem) {
   if (!album.local) {
     return false;
   }
-  return album.local.downloaded_tracks > 0 || album.local.audio_files > 0;
+  return album.local.has_media || album.local.downloaded_tracks > 0 || album.local.audio_files > 0;
 }
 
 function localStateValue(album: DiscListItem) {
@@ -122,8 +122,20 @@ function trackCountText(
   return "-";
 }
 
-function formatList(values?: string[]) {
-  return values && values.length > 0 ? values.join(", ") : "-";
+function formatList(album: DiscListItem) {
+  if (album.formats && album.formats.length > 0) {
+    return album.formats.join(", ");
+  }
+  const localFormats = album.local?.formats
+    ? Object.entries(album.local.formats)
+        .filter(([, present]) => present)
+        .map(([format]) => format)
+    : [];
+  if (localFormats.length > 0) {
+    return localFormats.join(", ");
+  }
+  const configuredFormats = album.local?.formats ? Object.keys(album.local.formats) : [];
+  return configuredFormats.length > 0 ? configuredFormats.join(", ") : "-";
 }
 
 function LocalTag({ album }: { album: DiscListItem }) {
@@ -247,7 +259,7 @@ export function AlbumTable({
       formats: {
         title: t("album.formats"),
         key: "formats",
-        render: (_, album) => formatList(album.formats ?? Object.keys(album.local?.formats ?? {})),
+        render: (_, album) => formatList(album),
       },
       gift: {
         title: t("album.gift"),

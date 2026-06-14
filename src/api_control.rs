@@ -13,12 +13,14 @@ use axum::{Json, Router};
 use chrono::Utc;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::{Path as StdPath, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
+use tokio_util::io::ReaderStream;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::{error, info, Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
@@ -101,6 +103,19 @@ struct LogQuery {
 struct LocalFileQuery {
     path: String,
     api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AlbumsQuery {
+    #[serde(default)]
+    refresh: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AlbumCacheFile {
+    cache_key: String,
+    updated_at: u64,
+    albums: Vec<DiscListItem>,
 }
 
 static WEB_LOGS: OnceLock<Arc<Mutex<Vec<LogEntry>>>> = OnceLock::new();
@@ -362,23 +377,41 @@ async fn health() -> Json<MessageResponse> {
     })
 }
 
-async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
+async fn status(State(state): State<ApiState>, headers: HeaderMap) -> Json<StatusResponse> {
     let config = state.config.read().await.clone();
+    let authenticated = authorize_with_key(&config.api.api_key, header_api_key(&headers)).is_ok();
     let sessions = state.sessions.read().await.clone();
     let users = sessions
         .iter()
         .filter_map(|session| session.user.clone())
         .collect::<Vec<_>>();
+    let schedule = {
+        let schedule = state.schedule.read().await;
+        if authenticated {
+            schedule.clone()
+        } else {
+            redacted_schedule_state(&schedule)
+        }
+    };
+
     Json(StatusResponse {
         status: "ok",
         ready: !sessions.is_empty(),
         configured: has_credentials(&config),
         requires_auth: !config.api.api_key.is_empty(),
-        user: users.first().cloned(),
-        users,
-        job: state.job.lock().await.clone(),
-        schedule: state.schedule.read().await.clone(),
-        last_error: state.last_error.read().await.clone(),
+        user: authenticated.then(|| users.first().cloned()).flatten(),
+        users: if authenticated { users } else { Vec::new() },
+        job: if authenticated {
+            state.job.lock().await.clone()
+        } else {
+            JobState::Idle
+        },
+        schedule,
+        last_error: if authenticated {
+            state.last_error.read().await.clone()
+        } else {
+            None
+        },
     })
 }
 
@@ -621,25 +654,44 @@ async fn bootstrap_config(
 async fn list_albums(
     State(state): State<ApiState>,
     headers: HeaderMap,
+    Query(query): Query<AlbumsQuery>,
 ) -> Result<Json<Vec<DiscListItem>>, ApiError> {
     authorize(&state, &headers).await?;
     let config = state.config.read().await.clone();
     let sessions = ensure_logged_in(&state).await?;
+    let cache_key = album_cache_key(&sessions);
+
+    if !query.refresh {
+        if let Some(mut albums) = read_album_cache(&state.config_path, &cache_key).await {
+            local_state::annotate_album_list(&config, &mut albums);
+            push_log(
+                &state,
+                "debug",
+                format!("已从本地缓存加载 {} 张已购专辑", albums.len()),
+            )
+            .await;
+            return Ok(Json(albums));
+        }
+    }
+
     let mut albums_by_id = std::collections::BTreeMap::new();
-    for session in sessions {
+    for session in &sessions {
         for album in session.client.get_my_discs(&session.token).await? {
             albums_by_id.entry(album.id.clone()).or_insert(album);
         }
     }
-    let mut albums = albums_by_id.into_values().collect::<Vec<_>>();
-    local_state::annotate_album_list(&config, &mut albums);
+    let albums = albums_by_id.into_values().collect::<Vec<_>>();
+    write_album_cache(&state.config_path, &cache_key, &albums).await;
+
+    let mut annotated = albums;
+    local_state::annotate_album_list(&config, &mut annotated);
     push_log(
         &state,
         "info",
-        format!("已加载 {} 张已购专辑", albums.len()),
+        format!("已加载 {} 张已购专辑", annotated.len()),
     )
     .await;
-    Ok(Json(albums))
+    Ok(Json(annotated))
 }
 
 async fn get_album(
@@ -648,9 +700,12 @@ async fn get_album(
     Path(id): Path<String>,
 ) -> Result<Json<DiscInfo>, ApiError> {
     authorize(&state, &headers).await?;
+    if id.trim().is_empty() {
+        return Err(ApiError::bad_request("专辑 ID 不能为空"));
+    }
     let sessions = ensure_logged_in(&state).await?;
     let mut last_error = None;
-    for session in sessions {
+    for session in &sessions {
         match session.client.get_disc_info(&id, &session.token).await {
             Ok(mut album) => {
                 let config = state.config.read().await.clone();
@@ -660,9 +715,13 @@ async fn get_album(
             Err(e) => last_error = Some(e),
         }
     }
-    Err(last_error
-        .map(ApiError::from)
-        .unwrap_or_else(|| ApiError::bad_request("未配置 Dizzylab 账号")))
+    if sessions.is_empty() {
+        return Err(ApiError::bad_request("未配置 Dizzylab 账号"));
+    }
+    let message = last_error
+        .map(|e| format!("未找到或无法访问专辑 {id}: {e}"))
+        .unwrap_or_else(|| format!("未找到或无法访问专辑 {id}"));
+    Err(ApiError::not_found(message))
 }
 
 async fn get_local_file(
@@ -702,10 +761,12 @@ async fn get_local_file(
         .and_then(|name| name.to_str())
         .unwrap_or("audio");
 
-    let bytes = tokio::fs::read(&canonical_file)
+    let file = tokio::fs::File::open(&canonical_file)
         .await
         .map_err(|e| ApiError::internal(format!("读取本地文件失败: {e}")))?;
-    let mut response = Response::new(Body::from(bytes));
+    let file_len = file.metadata().await.ok().map(|metadata| metadata.len());
+    let stream = ReaderStream::new(file);
+    let mut response = Response::new(Body::from_stream(stream));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         content_type
@@ -718,6 +779,23 @@ async fn get_local_file(
             .parse()
             .unwrap_or(header::HeaderValue::from_static("inline")),
     );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        header::HeaderValue::from_static("no-referrer"),
+    );
+    response.headers_mut().insert(
+        header::HeaderName::from_static("x-content-type-options"),
+        header::HeaderValue::from_static("nosniff"),
+    );
+    if let Some(file_len) = file_len {
+        if let Ok(value) = file_len.to_string().parse() {
+            response.headers_mut().insert(header::CONTENT_LENGTH, value);
+        }
+    }
     Ok(response)
 }
 
@@ -751,6 +829,80 @@ fn content_type_for_audio(path: &StdPath) -> &'static str {
 
 fn sanitize_header_value(value: &str) -> String {
     value.replace(['\r', '\n', '"'], "_")
+}
+
+fn redacted_schedule_state(schedule: &ScheduleState) -> ScheduleState {
+    ScheduleState {
+        enabled: schedule.enabled,
+        cron: if schedule.enabled {
+            "<redacted>".to_string()
+        } else {
+            String::new()
+        },
+        next_run: schedule.next_run,
+        last_run: schedule.last_run,
+        last_error: None,
+    }
+}
+
+fn album_cache_key(sessions: &[AccountSession]) -> String {
+    let mut identities = sessions
+        .iter()
+        .map(|session| {
+            let uid = session
+                .user
+                .as_ref()
+                .map(|user| user.uid.as_str())
+                .unwrap_or("");
+            format!("{}:{uid}", session.account.username)
+        })
+        .collect::<Vec<_>>();
+    identities.sort();
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    identities.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn album_cache_path(config_path: &str, cache_key: &str) -> PathBuf {
+    let config_path = StdPath::new(config_path);
+    let base_dir = config_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| StdPath::new("."));
+    base_dir
+        .join(".dizzysync-cache")
+        .join(format!("albums-{cache_key}.json"))
+}
+
+async fn read_album_cache(config_path: &str, cache_key: &str) -> Option<Vec<DiscListItem>> {
+    let cache_path = album_cache_path(config_path, cache_key);
+    let content = tokio::fs::read_to_string(cache_path).await.ok()?;
+    let cache: AlbumCacheFile = serde_json::from_str(&content).ok()?;
+    (cache.cache_key == cache_key).then_some(cache.albums)
+}
+
+async fn write_album_cache(config_path: &str, cache_key: &str, albums: &[DiscListItem]) {
+    let cache_path = album_cache_path(config_path, cache_key);
+    if let Some(parent) = cache_path.parent() {
+        if let Err(e) = tokio::fs::create_dir_all(parent).await {
+            tracing::debug!("无法创建专辑缓存目录: {}", e);
+            return;
+        }
+    }
+    let cache = AlbumCacheFile {
+        cache_key: cache_key.to_string(),
+        updated_at: now_unix(),
+        albums: albums.to_vec(),
+    };
+    match serde_json::to_vec_pretty(&cache) {
+        Ok(bytes) => {
+            if let Err(e) = tokio::fs::write(cache_path, bytes).await {
+                tracing::debug!("无法写入专辑缓存: {}", e);
+            }
+        }
+        Err(e) => tracing::debug!("无法序列化专辑缓存: {}", e),
+    }
 }
 
 async fn start_sync(
@@ -1349,6 +1501,26 @@ async fn push_log_raw(
     push_log_sync(logs, level, message);
 }
 
+fn redact_sensitive(message: &str) -> String {
+    let mut redacted = message.to_string();
+    for pattern in [
+        r"(?i)(token=)[^\s&]+",
+        r"(?i)(api[_-]?key=)[^\s&]+",
+        r"(?i)(password=)[^\s&]+",
+        r#"(?i)("token"\s*:\s*)"[^"]*""#,
+        r#"(?i)("api[_-]?key"\s*:\s*)"[^"]*""#,
+        r#"(?i)("password"\s*:\s*)"[^"]*""#,
+        r#"(?i)(token['"]?\s*[:=]\s*)[^,}}\]\s]+"#,
+        r#"(?i)(api[_-]?key['"]?\s*[:=]\s*)[^,}}\]\s]+"#,
+        r#"(?i)(password['"]?\s*[:=]\s*)[^,}}\]\s]+"#,
+    ] {
+        if let Ok(regex) = regex::Regex::new(pattern) {
+            redacted = regex.replace_all(&redacted, "$1<redacted>").into_owned();
+        }
+    }
+    redacted
+}
+
 fn push_log_sync(
     logs: &Arc<Mutex<Vec<LogEntry>>>,
     level: &'static str,
@@ -1358,7 +1530,7 @@ fn push_log_sync(
     logs.push(LogEntry {
         timestamp: now_unix(),
         level,
-        message: message.into(),
+        message: redact_sensitive(&message.into()),
     });
     if logs.len() > MAX_LOG_ENTRIES {
         let excess = logs.len() - MAX_LOG_ENTRIES;
@@ -1375,35 +1547,35 @@ impl ApiError {
     fn unauthorized(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
-            message: message.into(),
+            message: redact_sensitive(&message.into()),
         }
     }
 
     fn conflict(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
-            message: message.into(),
+            message: redact_sensitive(&message.into()),
         }
     }
 
     fn bad_request(message: impl ToString) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
-            message: message.to_string(),
+            message: redact_sensitive(&message.to_string()),
         }
     }
 
     fn not_found(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
-            message: message.into(),
+            message: redact_sensitive(&message.into()),
         }
     }
 
     fn internal(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: message.into(),
+            message: redact_sensitive(&message.into()),
         }
     }
 }
@@ -1412,7 +1584,7 @@ impl From<anyhow::Error> for ApiError {
     fn from(value: anyhow::Error) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: value.to_string(),
+            message: redact_sensitive(&value.to_string()),
         }
     }
 }
