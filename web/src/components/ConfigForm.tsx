@@ -1,4 +1,9 @@
-import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  ExperimentOutlined,
+  MinusCircleOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import {
   Alert,
   App,
@@ -16,12 +21,14 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
-import type { ConfigResponse, UpdateConfigRequest } from "../types.ts";
+import type { ConfigResponse, TestLoginResponse, UpdateConfigRequest } from "../types.ts";
+import type { ConfigGuideSection } from "./ConfigGuide.tsx";
 
 interface ConfigFormProps {
   config: ConfigResponse | null;
   mode?: "settings" | "onboarding";
   onSaved: (config: ConfigResponse, apiKey?: string) => void;
+  onFocusGuide?: (section: ConfigGuideSection) => void;
 }
 
 interface AccountFormValue {
@@ -46,11 +53,18 @@ interface ConfigFormValues {
   apiKey?: string;
 }
 
-export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormProps) {
+interface AccountTestState {
+  loading: boolean;
+  result?: TestLoginResponse;
+  error?: string;
+}
+
+export function ConfigForm({ config, mode = "settings", onSaved, onFocusGuide }: ConfigFormProps) {
   const { message } = App.useApp();
   const { t } = useI18n();
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
+  const [accountTests, setAccountTests] = useState<Record<number, AccountTestState>>({});
   const isOnboarding = mode === "onboarding";
   const outputDirLocked = Boolean(config?.config.paths.output_dir_locked);
 
@@ -67,6 +81,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
   const templateOptions = useMemo(
     () => [
       { label: t("config.template.default"), value: "{album}/@{label}" },
+      { label: t("config.template.flat"), value: "{album}" },
       { label: t("config.template.labelAlbum"), value: "@{label}/{album}" },
       { label: t("config.template.yearAlbum"), value: "{year}/{album}" },
       { label: t("config.template.artistAlbum"), value: "{authors}/{album}" },
@@ -108,6 +123,59 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       form.setFieldsValue(initialValues);
     }
   }, [form, initialValues]);
+
+  const focusGuide = (section: ConfigGuideSection) => () => onFocusGuide?.(section);
+
+  const testAccount = useCallback(
+    async (fieldName: number, fieldKey: number) => {
+      try {
+        await form.validateFields([
+          ["users", fieldName, "username"],
+          ["users", fieldName, "password"],
+        ]);
+      } catch {
+        return;
+      }
+
+      const account = form.getFieldValue(["users", fieldName]) as AccountFormValue | undefined;
+      const username = account?.username?.trim() ?? "";
+      const password = account?.password?.trim() ?? "";
+      const savedAccount = config?.config.users[fieldName] ?? config?.config.user;
+      if (!(password || savedAccount?.has_password)) {
+        form.setFields([
+          {
+            name: ["users", fieldName, "password"],
+            errors: [t("config.passwordRequired")],
+          },
+        ]);
+        return;
+      }
+
+      setAccountTests((current) => ({
+        ...current,
+        [fieldKey]: { loading: true },
+      }));
+      try {
+        const result = await api.testLogin({
+          username,
+          ...(password ? { password } : {}),
+        });
+        setAccountTests((current) => ({
+          ...current,
+          [fieldKey]: { loading: false, result },
+        }));
+      } catch (caught) {
+        setAccountTests((current) => ({
+          ...current,
+          [fieldKey]: {
+            loading: false,
+            error: caught instanceof Error ? caught.message : String(caught),
+          },
+        }));
+      }
+    },
+    [config, form, t],
+  );
 
   const submit = useCallback(
     async (values: ConfigFormValues) => {
@@ -155,6 +223,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           values.users.map((user) => ({ ...user, password: "" })),
         );
         form.setFieldValue("apiKey", "");
+        setAccountTests({});
         onSaved(nextConfig, apiKey || undefined);
       } catch (caught) {
         message.error(caught instanceof Error ? caught.message : String(caught));
@@ -178,48 +247,99 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           message={t("config.outputDirLocked")}
         />
       ) : null}
-      <Form form={form} layout="vertical" onFinish={submit}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={submit}
+        onValuesChange={(changedValues) => {
+          if ("users" in changedValues) {
+            setAccountTests({});
+          }
+        }}
+      >
         <Form.List name="users">
           {(fields, { add, remove }) => (
             <Space direction="vertical" style={{ width: "100%" }}>
               {fields.map((field) => {
                 const account = config?.config.users[field.name] ?? config?.config.user;
+                const testState = accountTests[field.key];
+                const testResult = testState?.result;
+                const testAlertType: "success" | "error" = testResult?.success
+                  ? "success"
+                  : "error";
+
+                let testMessage = testState?.error ?? testResult?.message;
+                if (testResult?.user) {
+                  testMessage = t("config.testLoginSuccessUser", {
+                    username: testResult.user.username,
+                    uid: testResult.user.uid,
+                  });
+                }
+
                 return (
-                  <Space align="start" key={field.key} size="large" wrap={true}>
-                    <Form.Item
-                      {...field}
-                      label={t("config.username")}
-                      name={[field.name, "username"]}
-                      rules={[{ required: true, message: t("config.usernameRequired") }]}
-                    >
-                      <Input autoComplete="username" style={{ width: 280 }} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      label={t("config.password")}
-                      name={[field.name, "password"]}
-                      rules={[
-                        {
-                          required: isOnboarding && !account?.has_password,
-                          message: t("config.passwordRequired"),
-                        },
-                      ]}
-                    >
-                      <Input.Password
-                        autoComplete="current-password"
-                        placeholder={t("config.passwordPlaceholder")}
-                        style={{ width: 280 }}
-                      />
-                    </Form.Item>
-                    {fields.length > 1 ? (
-                      <Button
-                        danger={true}
-                        icon={<MinusCircleOutlined />}
-                        style={{ marginTop: 30 }}
-                        onClick={() => remove(field.name)}
+                  <Space direction="vertical" key={field.key} style={{ width: "100%" }}>
+                    <Space align="start" size="large" wrap={true}>
+                      <Form.Item
+                        {...field}
+                        label={t("config.username")}
+                        name={[field.name, "username"]}
+                        rules={[{ required: true, message: t("config.usernameRequired") }]}
                       >
-                        {t("config.removeAccount")}
+                        <Input
+                          autoComplete="username"
+                          style={{ width: 280 }}
+                          onFocus={focusGuide("user")}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        label={t("config.password")}
+                        name={[field.name, "password"]}
+                        rules={[
+                          {
+                            required: isOnboarding && !account?.has_password,
+                            message: t("config.passwordRequired"),
+                          },
+                        ]}
+                      >
+                        <Input.Password
+                          autoComplete="current-password"
+                          placeholder={t("config.passwordPlaceholder")}
+                          style={{ width: 280 }}
+                          onFocus={focusGuide("user")}
+                        />
+                      </Form.Item>
+                      <Button
+                        icon={<ExperimentOutlined />}
+                        loading={testState?.loading}
+                        style={{ marginTop: 30 }}
+                        onClick={() => testAccount(field.name, field.key)}
+                      >
+                        {t("config.testLogin")}
                       </Button>
+                      {fields.length > 1 ? (
+                        <Button
+                          danger={true}
+                          icon={<MinusCircleOutlined />}
+                          style={{ marginTop: 30 }}
+                          onClick={() => remove(field.name)}
+                        >
+                          {t("config.removeAccount")}
+                        </Button>
+                      ) : null}
+                    </Space>
+                    {testMessage ? (
+                      <Alert
+                        showIcon={true}
+                        style={{ maxWidth: 760 }}
+                        type={testAlertType}
+                        message={
+                          testResult?.success
+                            ? t("config.testLoginSuccess")
+                            : t("config.testLoginFailed")
+                        }
+                        description={testMessage}
+                      />
                     ) : null}
                   </Space>
                 );
@@ -238,6 +358,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
             <Input.Password
               placeholder={t("config.webPasswordPlaceholder")}
               style={{ width: 280 }}
+              onFocus={focusGuide("api")}
             />
           </Form.Item>
         </Space>
@@ -247,7 +368,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           name="formats"
           rules={[{ required: true, message: t("config.formatsRequired") }]}
         >
-          <Select mode="multiple" options={formatOptions} />
+          <Select mode="multiple" options={formatOptions} onFocus={focusGuide("download")} />
         </Form.Item>
 
         <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
@@ -257,7 +378,11 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
             rules={[{ required: true, message: t("config.outputDirRequired") }]}
             tooltip={outputDirLocked ? t("config.outputDirLocked") : undefined}
           >
-            <Input disabled={outputDirLocked} style={{ width: 320 }} />
+            <Input
+              disabled={outputDirLocked}
+              style={{ width: 320 }}
+              onFocus={focusGuide("paths")}
+            />
           </Form.Item>
           <Form.Item
             label={t("config.directoryTemplate")}
@@ -275,6 +400,7 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
                   .includes(inputValue.toLowerCase())
               }
               style={{ width: 360 }}
+              onFocus={focusGuide("paths")}
             />
           </Form.Item>
           <Form.Item
@@ -289,34 +415,34 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
               },
             ]}
           >
-            <InputNumber min={1} style={{ width: 180 }} />
+            <InputNumber min={1} style={{ width: 180 }} onFocus={focusGuide("behavior")} />
           </Form.Item>
         </Space>
 
         <Space size="large" wrap={true}>
           <Form.Item name="skipExisting" valuePropName="checked">
-            <Checkbox>{t("config.skipExisting")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.skipExisting")}</Checkbox>
           </Form.Item>
           <Form.Item name="singleThreaded" valuePropName="checked">
-            <Checkbox>{t("config.singleThreaded")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.singleThreaded")}</Checkbox>
           </Form.Item>
           <Form.Item name="generateReadme" valuePropName="checked">
-            <Checkbox>{t("config.generateReadme")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.generateReadme")}</Checkbox>
           </Form.Item>
           <Form.Item name="generateNfo" valuePropName="checked">
-            <Checkbox>{t("config.generateNfo")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.generateNfo")}</Checkbox>
           </Form.Item>
           <Form.Item name="metadataOnly" valuePropName="checked">
-            <Checkbox>{t("config.metadataOnly")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.metadataOnly")}</Checkbox>
           </Form.Item>
           <Form.Item name="debug" valuePropName="checked">
-            <Checkbox>{t("config.debug")}</Checkbox>
+            <Checkbox onFocus={focusGuide("behavior")}>{t("config.debug")}</Checkbox>
           </Form.Item>
         </Space>
 
         <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
           <Form.Item name="scheduleEnabled" valuePropName="checked">
-            <Checkbox>{t("config.scheduleEnabled")}</Checkbox>
+            <Checkbox onFocus={focusGuide("schedule")}>{t("config.scheduleEnabled")}</Checkbox>
           </Form.Item>
           <Form.Item
             label={t("config.scheduleCron")}
@@ -324,7 +450,11 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
             rules={[{ required: true, message: t("config.scheduleCronRequired") }]}
             tooltip={t("config.scheduleCronHelp")}
           >
-            <Input placeholder="0 0 3 * * * *" style={{ width: 320 }} />
+            <Input
+              placeholder="0 0 3 * * * *"
+              style={{ width: 320 }}
+              onFocus={focusGuide("schedule")}
+            />
           </Form.Item>
         </Space>
 

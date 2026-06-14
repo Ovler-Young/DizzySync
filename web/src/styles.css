@@ -51,7 +51,7 @@ body {
 
 .page-content {
   margin: 24px auto;
-  max-width: 1320px;
+  max-width: 1440px;
   padding: 0 24px 32px;
 }
 
@@ -82,4 +82,18 @@ body {
 
 .muted {
   color: rgba(0, 0, 0, 0.45);
+}
+
+.status-descriptions .ant-descriptions-item-label,
+.status-descriptions .ant-descriptions-item-content,
+.status-descriptions .ant-tag {
+  white-space: nowrap;
+}
+
+.guide-section-active > .ant-collapse-header {
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.guide-section-active > .ant-collapse-content {
+  border-left: 3px solid #1677ff;
 }

@@ -1,10 +1,11 @@
 use crate::client::DizzylabClient;
 use crate::config::{Config, UserConfig};
 use crate::downloader::Downloader;
+use crate::local_state;
 use crate::types::{DiscInfo, DiscListItem, UserInfo};
 use anyhow::{anyhow, Result};
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -15,11 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex as TokioMutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
-use tracing::{error, info};
+use tracing::{error, info, Event, Level, Subscriber};
+use tracing_subscriber::layer::{Context, Layer};
 
 #[derive(Debug, Clone)]
 pub struct ApiServerOptions {
@@ -32,7 +34,7 @@ struct ApiState {
     sessions: Arc<RwLock<Vec<AccountSession>>>,
     config: Arc<RwLock<Config>>,
     config_path: String,
-    job: Arc<Mutex<JobState>>,
+    job: Arc<TokioMutex<JobState>>,
     schedule: Arc<RwLock<ScheduleState>>,
     last_error: Arc<RwLock<Option<String>>>,
     logs: Arc<Mutex<Vec<LogEntry>>>,
@@ -85,6 +87,75 @@ struct LogEntry {
     timestamp: u64,
     level: &'static str,
     message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LogQuery {
+    date: Option<String>,
+    level: Option<String>,
+    start: Option<String>,
+    end: Option<String>,
+}
+
+static WEB_LOGS: OnceLock<Arc<Mutex<Vec<LogEntry>>>> = OnceLock::new();
+const MAX_LOG_ENTRIES: usize = 1000;
+
+pub fn web_log_layer() -> WebLogLayer {
+    WebLogLayer
+}
+
+pub struct WebLogLayer;
+
+impl<S> Layer<S> for WebLogLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let level = match *event.metadata().level() {
+            Level::ERROR => "error",
+            Level::WARN => "warn",
+            Level::INFO => "info",
+            Level::DEBUG => "debug",
+            Level::TRACE => "trace",
+        };
+        let mut visitor = LogMessageVisitor::default();
+        event.record(&mut visitor);
+        let message = visitor.finish();
+        if !message.is_empty() {
+            push_log_sync(shared_logs(), level, message);
+        }
+    }
+}
+
+#[derive(Default)]
+struct LogMessageVisitor {
+    message: Option<String>,
+    fields: Vec<String>,
+}
+
+impl LogMessageVisitor {
+    fn finish(self) -> String {
+        match (self.message, self.fields.is_empty()) {
+            (Some(message), true) => message,
+            (Some(message), false) => format!("{} {}", message, self.fields.join(" ")),
+            (None, false) => self.fields.join(" "),
+            (None, true) => String::new(),
+        }
+    }
+}
+
+impl tracing::field::Visit for LogMessageVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = Some(format!("{value:?}").trim_matches('"').to_string());
+        } else {
+            self.fields.push(format!("{}={value:?}", field.name()));
+        }
+    }
+}
+
+fn shared_logs() -> &'static Arc<Mutex<Vec<LogEntry>>> {
+    WEB_LOGS.get_or_init(|| Arc::new(Mutex::new(Vec::new())))
 }
 
 #[derive(Debug, Serialize)]
@@ -206,6 +277,20 @@ struct BootstrapConfigRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct TestLoginRequest {
+    username: String,
+    password: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TestLoginResponse {
+    success: bool,
+    account_username: String,
+    user: Option<UserInfo>,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SyncRequest {
     id: Option<String>,
 }
@@ -220,10 +305,10 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         sessions: Arc::new(RwLock::new(Vec::new())),
         config: Arc::new(RwLock::new(config.clone())),
         config_path: options.config_path,
-        job: Arc::new(Mutex::new(JobState::Idle)),
+        job: Arc::new(TokioMutex::new(JobState::Idle)),
         schedule: Arc::new(RwLock::new(schedule_state_from_config(&config))),
         last_error: Arc::new(RwLock::new(None)),
-        logs: Arc::new(Mutex::new(Vec::new())),
+        logs: shared_logs().clone(),
     };
     push_log(&state, "info", "API/Web 控制服务初始化完成").await;
 
@@ -242,6 +327,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         .route("/logs", get(get_logs))
         .route("/config", get(get_config).put(update_config))
         .route("/config/bootstrap", post(bootstrap_config))
+        .route("/config/test-login", post(test_login))
         .route("/albums", get(list_albums))
         .route("/albums/{id}", get(get_album))
         .route("/sync", post(start_sync))
@@ -292,9 +378,66 @@ async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
 async fn get_logs(
     State(state): State<ApiState>,
     headers: HeaderMap,
+    Query(query): Query<LogQuery>,
 ) -> Result<Json<Vec<LogEntry>>, ApiError> {
     authorize(&state, &headers).await?;
-    Ok(Json(state.logs.lock().await.clone()))
+    let logs = state
+        .logs
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Ok(Json(filter_logs(&logs, &query)))
+}
+
+fn filter_logs(logs: &[LogEntry], query: &LogQuery) -> Vec<LogEntry> {
+    let level = query.level.as_deref().filter(|level| !level.is_empty());
+    let start = query.start.as_deref().and_then(parse_log_time);
+    let end = query.end.as_deref().and_then(parse_log_time);
+
+    logs.iter()
+        .filter(|entry| match level {
+            Some(level) => entry.level.eq_ignore_ascii_case(level),
+            None => true,
+        })
+        .filter(|entry| match query.date.as_deref() {
+            Some(date) => log_date(entry.timestamp) == date,
+            None => true,
+        })
+        .filter(|entry| match start {
+            Some(start) => entry.timestamp >= start,
+            None => true,
+        })
+        .filter(|entry| match end {
+            Some(end) => entry.timestamp <= end,
+            None => true,
+        })
+        .cloned()
+        .collect()
+}
+
+fn parse_log_time(value: &str) -> Option<u64> {
+    if let Ok(timestamp) = value.parse::<u64>() {
+        return Some(timestamp);
+    }
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|datetime| datetime.timestamp().max(0) as u64)
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M")
+                .ok()
+                .and_then(|datetime| datetime.and_local_timezone(chrono::Local).single())
+                .map(|datetime| datetime.timestamp().max(0) as u64)
+        })
+}
+
+fn log_date(timestamp: u64) -> String {
+    chrono::DateTime::from_timestamp(timestamp as i64, 0)
+        .map(|datetime| {
+            datetime
+                .with_timezone(&chrono::Local)
+                .date_naive()
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
 async fn get_config(
@@ -341,6 +484,84 @@ async fn update_config(
         exists: std::path::Path::new(&state.config_path).exists(),
         config: PublicConfig::from_config(&config),
     }))
+}
+
+async fn test_login(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(req): Json<TestLoginRequest>,
+) -> Result<Json<TestLoginResponse>, ApiError> {
+    authorize(&state, &headers).await?;
+
+    let username = req.username.trim().to_string();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("请设置 Dizzylab username"));
+    }
+
+    let config = state.config.read().await.clone();
+    let password = req
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|password| !password.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            config
+                .accounts()
+                .into_iter()
+                .find(|account| account.username == username)
+                .map(|account| account.password)
+        })
+        .unwrap_or_default();
+
+    if password.trim().is_empty() {
+        return Err(ApiError::bad_request("请设置 Dizzylab password"));
+    }
+
+    let account = UserConfig {
+        username: username.clone(),
+        password,
+    };
+    let account_label = account_label(&account);
+    let client = DizzylabClient::new(config.behavior.debug)?;
+
+    match client.login(&account.username, &account.password).await {
+        Ok(token) => match client.get_my_info(&token).await {
+            Ok(user) => {
+                let message = format!(
+                    "账号 {account_label} 登录成功，已获取用户 {} (UID: {})",
+                    user.username, user.uid
+                );
+                push_log(&state, "info", message.clone()).await;
+                Ok(Json(TestLoginResponse {
+                    success: true,
+                    account_username: account.username,
+                    user: Some(user),
+                    message,
+                }))
+            }
+            Err(e) => {
+                let message = format!("账号 {account_label} 登录成功，但获取用户信息失败: {e}");
+                push_log(&state, "warn", message.clone()).await;
+                Ok(Json(TestLoginResponse {
+                    success: true,
+                    account_username: account.username,
+                    user: None,
+                    message,
+                }))
+            }
+        },
+        Err(e) => {
+            let message = format!("账号 {account_label} 登录失败: {e}");
+            push_log(&state, "warn", message.clone()).await;
+            Ok(Json(TestLoginResponse {
+                success: false,
+                account_username: account.username,
+                user: None,
+                message,
+            }))
+        }
+    }
 }
 
 async fn bootstrap_config(
@@ -395,6 +616,7 @@ async fn list_albums(
     headers: HeaderMap,
 ) -> Result<Json<Vec<DiscListItem>>, ApiError> {
     authorize(&state, &headers).await?;
+    let config = state.config.read().await.clone();
     let sessions = ensure_logged_in(&state).await?;
     let mut albums_by_id = std::collections::BTreeMap::new();
     for session in sessions {
@@ -402,7 +624,8 @@ async fn list_albums(
             albums_by_id.entry(album.id.clone()).or_insert(album);
         }
     }
-    let albums = albums_by_id.into_values().collect::<Vec<_>>();
+    let mut albums = albums_by_id.into_values().collect::<Vec<_>>();
+    local_state::annotate_album_list(&config, &mut albums);
     push_log(
         &state,
         "info",
@@ -422,7 +645,11 @@ async fn get_album(
     let mut last_error = None;
     for session in sessions {
         match session.client.get_disc_info(&id, &session.token).await {
-            Ok(album) => return Ok(Json(album)),
+            Ok(mut album) => {
+                let config = state.config.read().await.clone();
+                local_state::annotate_disc_info(&config, &mut album);
+                return Ok(Json(album));
+            }
             Err(e) => last_error = Some(e),
         }
     }
@@ -1022,14 +1249,22 @@ async fn push_log_raw(
     level: &'static str,
     message: impl Into<String>,
 ) {
-    let mut logs = logs.lock().await;
+    push_log_sync(logs, level, message);
+}
+
+fn push_log_sync(
+    logs: &Arc<Mutex<Vec<LogEntry>>>,
+    level: &'static str,
+    message: impl Into<String>,
+) {
+    let mut logs = logs.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     logs.push(LogEntry {
         timestamp: now_unix(),
         level,
         message: message.into(),
     });
-    if logs.len() > 200 {
-        let excess = logs.len() - 200;
+    if logs.len() > MAX_LOG_ENTRIES {
+        let excess = logs.len() - MAX_LOG_ENTRIES;
         logs.drain(0..excess);
     }
 }

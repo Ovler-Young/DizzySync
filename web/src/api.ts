@@ -5,6 +5,8 @@ import type {
   DiscListItem,
   LogEntry,
   StatusResponse,
+  TestLoginRequest,
+  TestLoginResponse,
   UpdateConfigRequest,
 } from "./types.ts";
 
@@ -55,13 +57,36 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+export interface LogFilters {
+  date?: string;
+  level?: string;
+  start?: string;
+  end?: string;
+}
+
+function queryString(filters: LogFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export const api = {
   status: () => request<StatusResponse>("/api/status"),
   config: () => request<ConfigResponse>("/api/config"),
-  logs: () => request<LogEntry[]>("/api/logs"),
+  logs: (filters: LogFilters = {}) => request<LogEntry[]>(`/api/logs${queryString(filters)}`),
   updateConfig: (body: UpdateConfigRequest) =>
     request<ConfigResponse>("/api/config", {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testLogin: (body: TestLoginRequest) =>
+    request<TestLoginResponse>("/api/config/test-login", {
+      method: "POST",
       body: JSON.stringify(body),
     }),
   albums: () => request<DiscListItem[]>("/api/albums"),

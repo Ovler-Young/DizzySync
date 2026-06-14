@@ -80,7 +80,12 @@ export function StatusCard({ status }: StatusCardProps) {
 
   return (
     <Card title={t("status.title")}>
-      <Descriptions bordered={true} column={{ xs: 1, sm: 2, lg: 4 }} size="small">
+      <Descriptions
+        bordered={true}
+        className="status-descriptions"
+        column={{ xs: 1, sm: 2, xl: 4 }}
+        size="small"
+      >
         <Descriptions.Item label={t("status.api")}>
           <Tag color="green">{status.status}</Tag>
         </Descriptions.Item>
