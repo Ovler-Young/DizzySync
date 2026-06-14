@@ -167,6 +167,7 @@ export function App() {
             title: track.title,
             authors: track.authers,
             path,
+            cover: track.coverurl || album.cover,
           },
         ];
       }),
@@ -177,14 +178,20 @@ export function App() {
     setPlayerSelection((previous) => (previous ? { ...previous, index } : previous));
   }, []);
 
-  const playAlbumTrack = useCallback(
-    (album: DiscInfo, track: Track) => {
+  const startAlbumPlayback = useCallback(
+    (album: DiscInfo, selectedTrack?: Track) => {
       const tracks = playableTracksForAlbum(album);
-      const selectedKey = `${track.discid}:${track.id}`;
-      const index = Math.max(
-        0,
-        tracks.findIndex((candidate) => candidate.key === selectedKey),
-      );
+      if (tracks.length === 0) {
+        message.warning(t("album.noPlayableTracks"));
+        return false;
+      }
+      const selectedKey = selectedTrack ? `${selectedTrack.discid}:${selectedTrack.id}` : null;
+      const index = selectedKey
+        ? Math.max(
+            0,
+            tracks.findIndex((candidate) => candidate.key === selectedKey),
+          )
+        : 0;
       const requestId = playRequestId + 1;
       setPlayRequestId(requestId);
       setPlayerSelection({
@@ -194,8 +201,31 @@ export function App() {
         index,
         requestId,
       });
+      return true;
     },
-    [playRequestId, playableTracksForAlbum],
+    [message, playRequestId, playableTracksForAlbum, t],
+  );
+
+  const playAlbumTrack = useCallback(
+    (album: DiscInfo, track: Track) => {
+      startAlbumPlayback(album, track);
+    },
+    [startAlbumPlayback],
+  );
+
+  const playAlbumFromList = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const album = await api.album(id);
+        startAlbumPlayback(album);
+      } catch (caught) {
+        message.error(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [message, startAlbumPlayback],
   );
 
   const syncAll = useCallback(async () => {
@@ -311,6 +341,7 @@ export function App() {
             <AlbumTable
               albums={albums}
               loading={loading}
+              onPlay={playAlbumFromList}
               onRefresh={refreshAll}
               onShow={(id) => showAlbum(id, true)}
               onSync={syncAlbum}
@@ -348,6 +379,7 @@ export function App() {
       loading,
       needsOnboarding,
       onboarding,
+      playAlbumFromList,
       refreshAll,
       showAlbum,
       status,

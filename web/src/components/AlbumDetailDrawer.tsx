@@ -1,12 +1,6 @@
-import {
-  ExportOutlined,
-  FolderOpenOutlined,
-  PlayCircleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
+import { ExportOutlined, PlayCircleOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Tooltip, Typography } from "antd";
 import { useCallback } from "react";
-import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 import type { DiscInfo, Track } from "../types.ts";
 
@@ -30,12 +24,23 @@ function AlbumActions({ albumId, onSync }: AlbumActionsProps) {
 
   return (
     <Space>
-      <Button href={albumUrl} icon={<ExportOutlined />} rel="noopener noreferrer" target="_blank">
-        {t("detail.openInDizzylab")}
-      </Button>
-      <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
-        {t("detail.sync")}
-      </Button>
+      <Tooltip title={t("detail.openInDizzylab")}>
+        <Button
+          aria-label={t("detail.openInDizzylab")}
+          href={albumUrl}
+          icon={<ExportOutlined />}
+          rel="noopener noreferrer"
+          target="_blank"
+        />
+      </Tooltip>
+      <Tooltip title={t("detail.sync")}>
+        <Button
+          aria-label={t("detail.sync")}
+          icon={<SyncOutlined />}
+          type="primary"
+          onClick={syncAlbum}
+        />
+      </Tooltip>
     </Space>
   );
 }
@@ -56,10 +61,18 @@ function renderTrackStatus(track: Track, t: (key: string) => string) {
   }
 
   const tag = <Tag color={color}>{label}</Tag>;
-  if (!local || local.paths.length === 0) {
+  if (!local) {
     return tag;
   }
-  return <Tooltip title={local.paths.join("\n")}>{tag}</Tooltip>;
+  const details = [
+    ...local.paths,
+    local.missing_formats.length > 0
+      ? `Missing formats: ${local.missing_formats.join(", ")}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return details ? <Tooltip title={details}>{tag}</Tooltip> : tag;
 }
 
 function trackKey(track: Track) {
@@ -75,28 +88,22 @@ interface TrackActionsProps {
 
 function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActionsProps) {
   const { t } = useI18n();
-  const path = track.local?.paths[0];
-  const src = path ? localFileUrl(path) : undefined;
-  const playable = Boolean(path);
+  const playable = Boolean(track.local?.paths[0]);
   const isCurrent = currentTrackKey === trackKey(track);
   const playTrack = useCallback(() => onPlayTrack(album, track), [album, onPlayTrack, track]);
 
   return (
     <Space className="track-actions" wrap={true}>
-      <Button
-        disabled={!playable}
-        icon={<PlayCircleOutlined />}
-        size="small"
-        type={isCurrent ? "primary" : "default"}
-        onClick={playTrack}
-      >
-        {isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
-      </Button>
-      {src ? (
-        <Button href={src} icon={<FolderOpenOutlined />} size="small" target="_blank">
-          {t("detail.openLocalFile")}
-        </Button>
-      ) : null}
+      <Tooltip title={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}>
+        <Button
+          aria-label={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
+          disabled={!playable}
+          icon={<PlayCircleOutlined />}
+          size="small"
+          type={isCurrent ? "primary" : "default"}
+          onClick={playTrack}
+        />
+      </Tooltip>
     </Space>
   );
 }
@@ -182,6 +189,16 @@ export function AlbumDetailDrawer({
                 </Typography.Text>
                 {album.local?.path ? (
                   <Typography.Text className="muted">{album.local.path}</Typography.Text>
+                ) : null}
+                {album.local && album.local.missing_formats.length > 0 ? (
+                  <Typography.Text className="muted">
+                    Missing formats: {album.local.missing_formats.join(", ")}
+                  </Typography.Text>
+                ) : null}
+                {album.local && album.local.missing_tracks.length > 0 ? (
+                  <Typography.Text className="muted">
+                    Missing tracks: {album.local.missing_tracks.join("; ")}
+                  </Typography.Text>
                 ) : null}
               </Space>
             </Descriptions.Item>

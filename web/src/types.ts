@@ -43,6 +43,8 @@ export interface LocalAlbumState {
   complete: boolean;
   gift_exists: boolean;
   formats: Record<string, boolean>;
+  missing_formats: string[];
+  missing_tracks: string[];
 }
 
 export interface LocalTrackState {
@@ -51,6 +53,7 @@ export interface LocalTrackState {
   complete: boolean;
   formats: Record<string, boolean>;
   paths: string[];
+  missing_formats: string[];
 }
 
 export interface DiscListItem {

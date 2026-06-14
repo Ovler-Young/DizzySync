@@ -333,11 +333,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
     };
     push_log(&state, "info", "API/Web 控制服务初始化完成").await;
 
-    if let Err(e) = ensure_logged_in(&state).await {
-        error!("API 服务启动时登录失败: {}", e);
-        *state.last_error.write().await = Some(e.to_string());
-    }
-
+    start_login_and_album_cache_refresh(state.clone());
     start_scheduler(state.clone());
 
     let bind = config.api.bind.clone();
@@ -514,9 +510,10 @@ async fn update_config(
 
     next_config.save_to_file(&state.config_path)?;
     *state.config.write().await = next_config.clone();
-    *state.sessions.write().await = next_sessions;
+    *state.sessions.write().await = next_sessions.clone();
     *state.schedule.write().await = schedule_state_from_config(&next_config);
     push_log(&state, "info", "配置已验证并保存").await;
+    start_album_cache_refresh_for_sessions(state.clone(), next_sessions);
 
     let config = state.config.read().await.clone();
     Ok(Json(ConfigResponse {
@@ -674,15 +671,7 @@ async fn list_albums(
         }
     }
 
-    let mut albums_by_id = std::collections::BTreeMap::new();
-    for session in &sessions {
-        for album in session.client.get_my_discs(&session.token).await? {
-            albums_by_id.entry(album.id.clone()).or_insert(album);
-        }
-    }
-    let albums = albums_by_id.into_values().collect::<Vec<_>>();
-    write_album_cache(&state.config_path, &cache_key, &albums).await;
-
+    let albums = refresh_album_cache(&state, &sessions).await?;
     let mut annotated = albums;
     local_state::annotate_album_list(&config, &mut annotated);
     push_log(
@@ -903,6 +892,62 @@ async fn write_album_cache(config_path: &str, cache_key: &str, albums: &[DiscLis
         }
         Err(e) => tracing::debug!("无法序列化专辑缓存: {}", e),
     }
+}
+
+fn start_login_and_album_cache_refresh(state: ApiState) {
+    tokio::spawn(async move {
+        push_log(&state, "info", "后台登录与专辑缓存刷新已启动").await;
+        match ensure_logged_in(&state).await {
+            Ok(sessions) => refresh_album_cache_and_log(&state, &sessions).await,
+            Err(e) => {
+                error!("API 服务启动时登录失败: {}", e);
+                *state.last_error.write().await = Some(e.to_string());
+                push_log(&state, "warn", format!("后台登录失败：{e}")).await;
+            }
+        }
+    });
+}
+
+fn start_album_cache_refresh_for_sessions(state: ApiState, sessions: Vec<AccountSession>) {
+    tokio::spawn(async move {
+        push_log(&state, "info", "后台专辑缓存刷新已启动").await;
+        refresh_album_cache_and_log(&state, &sessions).await;
+    });
+}
+
+async fn refresh_album_cache_and_log(state: &ApiState, sessions: &[AccountSession]) {
+    match refresh_album_cache(state, sessions).await {
+        Ok(albums) => {
+            *state.last_error.write().await = None;
+            push_log(
+                state,
+                "info",
+                format!("后台已刷新 {} 张已购专辑缓存", albums.len()),
+            )
+            .await;
+        }
+        Err(e) => {
+            error!("后台刷新专辑缓存失败: {}", e);
+            *state.last_error.write().await = Some(e.to_string());
+            push_log(state, "warn", format!("后台刷新专辑缓存失败：{e}")).await;
+        }
+    }
+}
+
+async fn refresh_album_cache(
+    state: &ApiState,
+    sessions: &[AccountSession],
+) -> Result<Vec<DiscListItem>> {
+    let cache_key = album_cache_key(sessions);
+    let mut albums_by_id = std::collections::BTreeMap::new();
+    for session in sessions {
+        for album in session.client.get_my_discs(&session.token).await? {
+            albums_by_id.entry(album.id.clone()).or_insert(album);
+        }
+    }
+    let albums = albums_by_id.into_values().collect::<Vec<_>>();
+    write_album_cache(&state.config_path, &cache_key, &albums).await;
+    Ok(albums)
 }
 
 async fn start_sync(

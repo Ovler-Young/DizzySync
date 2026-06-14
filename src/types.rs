@@ -18,6 +18,12 @@ pub struct LocalAlbumState {
     pub complete: bool,
     pub gift_exists: bool,
     pub formats: BTreeMap<String, bool>,
+    /// Configured album-level formats that are not present locally (including gift).
+    #[serde(default)]
+    pub missing_formats: Vec<String>,
+    /// Known tracks that are incomplete or missing locally. Populated when full album metadata is available.
+    #[serde(default)]
+    pub missing_tracks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +36,9 @@ pub struct LocalTrackState {
     pub complete: bool,
     pub formats: BTreeMap<String, bool>,
     pub paths: Vec<String>,
+    /// Configured audio formats that are missing for this track.
+    #[serde(default)]
+    pub missing_formats: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
