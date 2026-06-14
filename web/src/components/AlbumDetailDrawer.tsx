@@ -44,12 +44,18 @@ function renderTrackStatus(track: Track, t: (key: string) => string) {
   const { local } = track;
   const downloaded = local ? local.downloaded : false;
   const hasMedia = local ? local.has_media || local.paths.length > 0 : false;
-  const label = downloaded
-    ? t("album.localDownloaded")
-    : hasMedia
-      ? t("album.localPartial")
-      : t("album.localNotDownloaded");
-  const tag = <Tag color={downloaded ? "success" : hasMedia ? "processing" : "default"}>{label}</Tag>;
+  let label = t("album.localNotDownloaded");
+  let color = "default";
+
+  if (downloaded) {
+    label = t("album.localDownloaded");
+    color = "success";
+  } else if (hasMedia) {
+    label = t("album.localPartial");
+    color = "processing";
+  }
+
+  const tag = <Tag color={color}>{label}</Tag>;
   if (!local || local.paths.length === 0) {
     return tag;
   }
