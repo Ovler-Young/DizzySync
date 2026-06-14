@@ -323,6 +323,10 @@ async fn main() -> Result<()> {
         }
     }
 
+    if requested_album_id.is_some() && !requested_album_found {
+        failures.push("所有账号均未找到或无法访问指定专辑".to_string());
+    }
+
     if failures.is_empty() {
         Ok(())
     } else {
