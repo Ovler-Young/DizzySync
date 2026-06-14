@@ -32,15 +32,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(path, { ...init, headers });
   const contentType = response.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? ((await response.json()) as unknown)
-    : await response.text();
+  const text = await response.text();
+  let payload: unknown = text;
+
+  if (contentType.includes("application/json") && text) {
+    try {
+      payload = JSON.parse(text) as unknown;
+    } catch {
+      payload = text;
+    }
+  }
 
   if (!response.ok) {
     const message =
       typeof payload === "object" && payload !== null && "message" in payload
         ? String((payload as ApiMessage).message)
-        : String(payload);
+        : text || response.statusText;
     throw new ApiError(response.status, message);
   }
 

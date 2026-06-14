@@ -249,7 +249,7 @@ async fn update_config(
     authorize(&state, &headers).await?;
 
     let mut next_config = state.config.read().await.clone();
-    apply_config_update(&mut next_config, req)?;
+    apply_config_update(&mut next_config, req);
     validate_credentials(&next_config).map_err(ApiError::bad_request)?;
     validate_formats(&next_config).map_err(ApiError::bad_request)?;
 
@@ -461,7 +461,7 @@ async fn authorize(state: &ApiState, headers: &HeaderMap) -> Result<(), ApiError
     }
 }
 
-fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) -> Result<()> {
+fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) {
     if let Some(user) = req.user {
         if let Some(username) = user.username {
             config.user.username = username;
@@ -517,8 +517,6 @@ fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) -> Result<
             config.api.api_key = api_key;
         }
     }
-
-    Ok(())
 }
 
 pub fn validate_credentials(config: &Config) -> Result<()> {
@@ -529,8 +527,28 @@ pub fn validate_credentials(config: &Config) -> Result<()> {
 }
 
 pub fn validate_formats(config: &Config) -> Result<()> {
-    let has_128 = config.download.formats.iter().any(|format| format == "128");
-    let has_320 = config.download.formats.iter().any(|format| format == "320");
+    if config.download.formats.is_empty() {
+        return Err(anyhow!("formats 至少需要包含一种下载格式"));
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    for format in &config.download.formats {
+        match format.as_str() {
+            "128" | "320" | "FLAC" | "gift" => {}
+            _ => {
+                return Err(anyhow!(
+                    "不支持的下载格式 \"{}\"；可选值为 128、320、FLAC、gift",
+                    format
+                ));
+            }
+        }
+        if !seen.insert(format.as_str()) {
+            return Err(anyhow!("formats 中包含重复的下载格式 \"{}\"", format));
+        }
+    }
+
+    let has_128 = seen.contains("128");
+    let has_320 = seen.contains("320");
     if has_128 && has_320 {
         return Err(anyhow!(
             "formats 中不能同时包含 \"128\" 和 \"320\"：两者均输出 .mp3 文件，文件名会冲突"

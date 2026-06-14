@@ -6,7 +6,7 @@ use crate::client::DizzylabClient;
 use crate::config::Config;
 use crate::metadata;
 use crate::types::{DiscInfo, DiscListItem};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{self, Datelike};
 use filetime::set_file_times;
 use std::fs;
@@ -50,7 +50,10 @@ impl Downloader {
             let sem = semaphore.clone();
             let downloader = this.clone();
             join_set.spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
+                let _permit = sem
+                    .acquire()
+                    .await
+                    .map_err(|e| anyhow!("获取并发许可失败: {e}"))?;
                 info!(
                     "处理专辑 {}/{}: {} - {}",
                     index + 1,
@@ -59,36 +62,50 @@ impl Downloader {
                     disc_item.label
                 );
 
-                let disc_info = match downloader
+                let disc_info = downloader
                     .client
                     .get_disc_info(&disc_item.id, &downloader.token)
                     .await
-                {
-                    Ok(info) => info,
-                    Err(e) => {
-                        error!("获取专辑 {} 详情失败: {}", disc_item.id, e);
-                        return;
-                    }
-                };
+                    .map_err(|e| anyhow!("获取专辑 {} 详情失败: {e}", disc_item.id))?;
 
-                if let Err(e) = downloader.download_album(&disc_info).await {
-                    error!("下载专辑 {} 失败: {}", disc_info.id, e);
-                }
+                downloader
+                    .download_album(&disc_info)
+                    .await
+                    .map_err(|e| anyhow!("下载专辑 {} 失败: {e}", disc_info.id))?;
 
                 if downloader.config.behavior.single_threaded {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 }
+
+                Ok::<(), anyhow::Error>(())
             });
         }
 
+        let mut failures = Vec::new();
         while let Some(res) = join_set.join_next().await {
-            if let Err(e) = res {
-                error!("任务异常: {}", e);
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    error!("专辑任务失败: {}", e);
+                    failures.push(e.to_string());
+                }
+                Err(e) => {
+                    error!("任务异常: {}", e);
+                    failures.push(e.to_string());
+                }
             }
         }
 
-        info!("同步完成！");
-        Ok(())
+        if failures.is_empty() {
+            info!("同步完成！");
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "同步完成但有 {} 个专辑失败: {}",
+                failures.len(),
+                failures.join("; ")
+            ))
+        }
     }
 
     /// Download a single album given its full disc info (already fetched).
