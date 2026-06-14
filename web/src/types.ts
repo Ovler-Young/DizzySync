@@ -31,12 +31,30 @@ export interface LogEntry {
 
 export type JobState = { state: "idle" } | { state: "running"; kind: string; started_at: number };
 
+export interface LocalAlbumState {
+  downloaded: boolean;
+  directory_exists: boolean;
+  path: string;
+  audio_files: number;
+  expected_tracks: number;
+  downloaded_tracks: number;
+  gift_exists: boolean;
+  formats: Record<string, boolean>;
+}
+
+export interface LocalTrackState {
+  downloaded: boolean;
+  formats: Record<string, boolean>;
+  paths: string[];
+}
+
 export interface DiscListItem {
   id: string;
   title: string;
   label: string;
   cover: string;
   labelid?: unknown;
+  local?: LocalAlbumState;
 }
 
 export interface Track {
@@ -48,6 +66,7 @@ export interface Track {
   label: string;
   url: string;
   coverurl: string;
+  local?: LocalTrackState;
 }
 
 export interface DiscInfo extends DiscListItem {
@@ -63,6 +82,7 @@ export interface DiscInfo extends DiscListItem {
   onlyhavegift: boolean;
   tags: string[];
   tracks: Track[];
+  local?: LocalAlbumState;
 }
 
 export interface ConfigResponse {
