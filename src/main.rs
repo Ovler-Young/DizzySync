@@ -236,76 +236,90 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Create client and login
-    let client = DizzylabClient::new(config.behavior.debug)?;
-    let token = match client
-        .login(&config.user.username, &config.user.password)
-        .await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            error!("登录失败: {}", e);
-            return Ok(());
-        }
-    };
+    let accounts = config.accounts();
+    let dry_run = matches.get_flag("dry-run");
+    let requested_album_id = matches.get_one::<String>("id").cloned();
+    let mut failures = Vec::new();
 
-    // Get user info (for display only)
-    if let Ok(user_info) = client.get_my_info(&token).await {
-        info!("已登录为: {} (UID: {})", user_info.username, user_info.uid);
-    }
-
-    // Build album list
-    let albums = if let Some(album_id) = matches.get_one::<String>("id") {
-        info!("获取指定专辑: {}", album_id);
-        match client.get_disc_info(album_id, &token).await {
-            Ok(disc_info) => {
-                // Wrap as a DiscListItem so sync_all_albums can fetch details again
-                // (or we can download directly)
-                let downloader = Downloader::new(client, config, token);
-                if matches.get_flag("dry-run") {
-                    println!(
-                        "  1. {} - {} ({})",
-                        disc_info.title, disc_info.label, disc_info.id
-                    );
-                } else {
-                    downloader.download_album(&disc_info).await?;
-                }
-                return Ok(());
-            }
+    for account in accounts {
+        let account_label = if account.username.trim().is_empty() {
+            "<empty>".to_string()
+        } else {
+            account.username.clone()
+        };
+        info!("账号 {} 登录中", account_label);
+        let client = DizzylabClient::new(config.behavior.debug)?;
+        let token = match client.login(&account.username, &account.password).await {
+            Ok(t) => t,
             Err(e) => {
-                error!("获取专辑 {} 失败: {}", album_id, e);
-                return Ok(());
+                error!("账号 {} 登录失败: {}", account_label, e);
+                failures.push(format!("{account_label}: {e}"));
+                continue;
             }
+        };
+
+        if let Ok(user_info) = client.get_my_info(&token).await {
+            info!("账号 {} 已登录为: {} (UID: {})", account_label, user_info.username, user_info.uid);
         }
+
+        let downloader = Downloader::new(client.clone(), config.clone(), token.clone());
+        if let Some(album_id) = &requested_album_id {
+            info!("账号 {} 获取指定专辑: {}", account_label, album_id);
+            match client.get_disc_info(album_id, &token).await {
+                Ok(disc_info) => {
+                    if dry_run {
+                        println!(
+                            "[{}] 1. {} - {} ({})",
+                            account_label, disc_info.title, disc_info.label, disc_info.id
+                        );
+                    } else if let Err(e) = downloader.download_album(&disc_info).await {
+                        failures.push(format!("{account_label}: {e}"));
+                    }
+                }
+                Err(e) => {
+                    info!("账号 {} 未找到或无法访问专辑 {}: {}", account_label, album_id, e);
+                }
+            }
+            continue;
+        }
+
+        let albums = match client.get_my_discs(&token).await {
+            Ok(albums) => albums,
+            Err(e) => {
+                failures.push(format!("{account_label}: {e}"));
+                continue;
+            }
+        };
+
+        if albums.is_empty() {
+            info!("账号 {} 没有找到任何专辑", account_label);
+            continue;
+        }
+
+        info!("账号 {} 找到 {} 个专辑", account_label, albums.len());
+
+        if dry_run {
+            info!("=== 账号 {} 专辑列表 ===", account_label);
+            for (index, album) in albums.iter().enumerate() {
+                println!(
+                    "[{}] {:3}. {} - {} ({})",
+                    account_label,
+                    index + 1,
+                    album.title,
+                    album.label,
+                    album.id
+                );
+            }
+        } else if let Err(e) = downloader.sync_all_albums(albums).await {
+            failures.push(format!("{account_label}: {e}"));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
     } else {
-        client.get_my_discs(&token).await?
-    };
-
-    if albums.is_empty() {
-        info!("没有找到任何专辑");
-        return Ok(());
+        Err(anyhow::anyhow!(failures.join("; ")))
     }
-
-    info!("找到 {} 个专辑", albums.len());
-
-    if matches.get_flag("dry-run") {
-        info!("=== 专辑列表 ===");
-        for (index, album) in albums.iter().enumerate() {
-            println!(
-                "{:3}. {} - {} ({})",
-                index + 1,
-                album.title,
-                album.label,
-                album.id
-            );
-        }
-        return Ok(());
-    }
-
-    let downloader = Downloader::new(client, config, token);
-    downloader.sync_all_albums(albums).await?;
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -315,8 +329,7 @@ mod tests {
     #[test]
     fn test_config_creation() {
         let config = Config::default();
-        assert!(config.user.username.is_empty());
-        assert!(config.user.password.is_empty());
+        assert!(config.accounts().is_empty());
         assert_eq!(config.download.formats.len(), 2);
         assert!(config.download.formats.contains(&"320".to_string()));
         assert!(config.download.formats.contains(&"FLAC".to_string()));
