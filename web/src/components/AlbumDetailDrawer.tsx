@@ -56,10 +56,18 @@ function renderTrackStatus(track: Track, t: (key: string) => string) {
   }
 
   const tag = <Tag color={color}>{label}</Tag>;
-  if (!local || local.paths.length === 0) {
+  if (!local) {
     return tag;
   }
-  return <Tooltip title={local.paths.join("\n")}>{tag}</Tooltip>;
+  const details = [
+    ...local.paths,
+    local.missing_formats.length > 0
+      ? `Missing formats: ${local.missing_formats.join(", ")}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return details ? <Tooltip title={details}>{tag}</Tooltip> : tag;
 }
 
 function trackKey(track: Track) {
@@ -182,6 +190,16 @@ export function AlbumDetailDrawer({
                 </Typography.Text>
                 {album.local?.path ? (
                   <Typography.Text className="muted">{album.local.path}</Typography.Text>
+                ) : null}
+                {album.local && album.local.missing_formats.length > 0 ? (
+                  <Typography.Text className="muted">
+                    Missing formats: {album.local.missing_formats.join(", ")}
+                  </Typography.Text>
+                ) : null}
+                {album.local && album.local.missing_tracks.length > 0 ? (
+                  <Typography.Text className="muted">
+                    Missing tracks: {album.local.missing_tracks.join("; ")}
+                  </Typography.Text>
                 ) : null}
               </Space>
             </Descriptions.Item>

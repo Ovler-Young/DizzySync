@@ -141,7 +141,21 @@ function formatList(album: DiscListItem) {
 function LocalTag({ album }: { album: DiscListItem }) {
   const { t } = useI18n();
   const tag = <Tag color={localStateColor(album)}>{localStateLabel(album, t)}</Tag>;
-  return album.local?.path ? <Tooltip title={album.local.path}>{tag}</Tooltip> : tag;
+  if (!album.local) {
+    return tag;
+  }
+  const details = [
+    album.local.path,
+    album.local.missing_formats.length > 0
+      ? `Missing formats: ${album.local.missing_formats.join(", ")}`
+      : undefined,
+    album.local.missing_tracks.length > 0
+      ? `Missing tracks: ${album.local.missing_tracks.join("; ")}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return details ? <Tooltip title={details}>{tag}</Tooltip> : tag;
 }
 
 function AlbumActions({ album, syncDisabled, onShow, onSync }: AlbumActionsProps) {

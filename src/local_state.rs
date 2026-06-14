@@ -72,13 +72,24 @@ fn album_state_from_dir(
         .filter(|count| *count > 0)
         .or(list_expected_tracks)
         .unwrap_or(0);
+    let mut missing_tracks = Vec::new();
     let (downloaded_tracks, complete_tracks) = album
         .map(|disc| {
             disc.tracks
                 .iter()
                 .enumerate()
                 .map(|(idx, track)| {
-                    track_state_from_dir(config, album_dir, track.title.as_str(), idx + 1)
+                    let state =
+                        track_state_from_dir(config, album_dir, track.title.as_str(), idx + 1);
+                    if !state.complete {
+                        missing_tracks.push(format!(
+                            "{:02}. {} ({})",
+                            idx + 1,
+                            track.title,
+                            state.missing_formats.join(", ")
+                        ));
+                    }
+                    state
                 })
                 .fold((0usize, 0usize), |(has_any, complete), state| {
                     (
@@ -123,6 +134,12 @@ fn album_state_from_dir(
         false
     };
 
+    let mut missing_formats = formats
+        .iter()
+        .filter_map(|(format, present)| (!present).then(|| format.clone()))
+        .collect::<Vec<_>>();
+    missing_formats.sort();
+
     LocalAlbumState {
         downloaded: complete,
         directory_exists,
@@ -135,6 +152,8 @@ fn album_state_from_dir(
         complete,
         gift_exists,
         formats,
+        missing_formats,
+        missing_tracks,
     }
 }
 
@@ -163,6 +182,11 @@ fn track_state_from_dir(
 
     let has_media = formats.values().any(|exists| *exists);
     let complete = !formats.is_empty() && formats.values().all(|exists| *exists);
+    let mut missing_formats = formats
+        .iter()
+        .filter_map(|(format, present)| (!present).then(|| format.clone()))
+        .collect::<Vec<_>>();
+    missing_formats.sort();
 
     LocalTrackState {
         downloaded: complete,
@@ -170,6 +194,7 @@ fn track_state_from_dir(
         complete,
         formats,
         paths,
+        missing_formats,
     }
 }
 
