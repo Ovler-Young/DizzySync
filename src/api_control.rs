@@ -351,7 +351,12 @@ async fn list_albums(
     authorize(&state, &headers).await?;
     let (client, token) = ensure_logged_in(&state).await?;
     let albums = client.get_my_discs(&token).await?;
-    push_log(&state, "info", format!("已加载 {} 张已购专辑", albums.len())).await;
+    push_log(
+        &state,
+        "info",
+        format!("已加载 {} 张已购专辑", albums.len()),
+    )
+    .await;
     Ok(Json(albums))
 }
 
