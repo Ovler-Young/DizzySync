@@ -194,7 +194,38 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   } else if (loopMode === "all") {
     loopLabel = t("player.loopAll");
   }
-  const loopIcon = loopMode === "shuffle" ? <SwapOutlined /> : <RetweetOutlined />;
+  const playPauseIcon = (
+    <span className="global-player-icon-stack" aria-hidden="true">
+      <PlayCircleOutlined
+        className={`global-player-icon-layer ${
+          isPlaying ? "global-player-icon-layer-inactive" : "global-player-icon-layer-active"
+        }`}
+      />
+      <PauseCircleOutlined
+        className={`global-player-icon-layer ${
+          isPlaying ? "global-player-icon-layer-active" : "global-player-icon-layer-inactive"
+        }`}
+      />
+    </span>
+  );
+  const loopIcon = (
+    <span className="global-player-icon-stack" aria-hidden="true">
+      <RetweetOutlined
+        className={`global-player-icon-layer ${
+          loopMode === "shuffle"
+            ? "global-player-icon-layer-inactive"
+            : "global-player-icon-layer-active"
+        }`}
+      />
+      <SwapOutlined
+        className={`global-player-icon-layer ${
+          loopMode === "shuffle"
+            ? "global-player-icon-layer-active"
+            : "global-player-icon-layer-inactive"
+        }`}
+      />
+    </span>
+  );
 
   const queueContent = (
     <List
@@ -270,7 +301,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
         <Tooltip title={isPlaying ? t("player.pause") : t("player.play")}>
           <Button
             disabled={!currentTrack}
-            icon={isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+            icon={playPauseIcon}
             type="primary"
             onClick={togglePlay}
           />
