@@ -42,6 +42,8 @@ export interface LocalAlbumState {
   has_media: boolean;
   complete: boolean;
   gift_exists: boolean;
+  gift_configured?: boolean;
+  gift_missing?: boolean;
   formats: Record<string, boolean>;
   missing_formats: string[];
   missing_tracks: string[];
@@ -83,6 +85,13 @@ export interface Track {
   label: string;
   url: string;
   coverurl: string;
+  duration?: string | number | null;
+  duration_seconds?: string | number | null;
+  durationSeconds?: string | number | null;
+  length?: string | number | null;
+  length_seconds?: string | number | null;
+  lengthSeconds?: string | number | null;
+  time?: string | number | null;
   local?: LocalTrackState;
 }
 
