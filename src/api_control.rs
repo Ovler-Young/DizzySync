@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -45,6 +46,8 @@ enum JobState {
 struct StatusResponse {
     status: &'static str,
     ready: bool,
+    configured: bool,
+    requires_auth: bool,
     user: Option<UserInfo>,
     job: JobState,
     last_error: Option<String>,
@@ -162,7 +165,7 @@ struct SyncRequest {
 
 pub async fn run(options: ApiServerOptions) -> Result<()> {
     let mut config = options.config.clone();
-    ensure_api_key_for_remote_bind(&mut config);
+    ensure_api_key_for_remote_bind(&mut config)?;
     config.save_to_file(&options.config_path)?;
 
     let state = ApiState {
@@ -214,18 +217,17 @@ async fn health() -> Json<MessageResponse> {
     })
 }
 
-async fn status(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<StatusResponse>, ApiError> {
-    authorize(&state, &headers).await?;
-    Ok(Json(StatusResponse {
+async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
+    let config = state.config.read().await.clone();
+    Json(StatusResponse {
         status: "ok",
         ready: state.token.read().await.is_some(),
+        configured: has_credentials(&config),
+        requires_auth: !config.api.api_key.is_empty(),
         user: state.user.read().await.clone(),
         job: state.job.lock().await.clone(),
         last_error: state.last_error.read().await.clone(),
-    }))
+    })
 }
 
 async fn get_config(
@@ -381,10 +383,17 @@ async fn start_job(
     let last_error = state.last_error.clone();
 
     tokio::spawn(async move {
-        let result = run_sync_job(state.clone(), album_id).await;
-        if let Err(e) = result {
-            error!("API 触发的同步任务失败: {}", e);
-            *last_error.write().await = Some(e.to_string());
+        let job_handle = tokio::spawn(async move { run_sync_job(state, album_id).await });
+        match job_handle.await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                error!("API 触发的同步任务失败: {}", e);
+                *last_error.write().await = Some(e.to_string());
+            }
+            Err(e) => {
+                error!("API 触发的同步任务异常: {}", e);
+                *last_error.write().await = Some(e.to_string());
+            }
         }
         *job_state.lock().await = JobState::Idle;
     });
@@ -520,10 +529,14 @@ fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) {
 }
 
 pub fn validate_credentials(config: &Config) -> Result<()> {
-    if config.user.username.is_empty() || config.user.password.is_empty() {
+    if !has_credentials(config) {
         return Err(anyhow!("请设置 Dizzylab username 和 password"));
     }
     Ok(())
+}
+
+fn has_credentials(config: &Config) -> bool {
+    !config.user.username.trim().is_empty() && !config.user.password.trim().is_empty()
 }
 
 pub fn validate_formats(config: &Config) -> Result<()> {
@@ -589,37 +602,51 @@ impl PublicConfig {
     }
 }
 
-fn ensure_api_key_for_remote_bind(config: &mut Config) {
+fn ensure_api_key_for_remote_bind(config: &mut Config) -> Result<()> {
     if !config.api.api_key.is_empty() || is_loopback_bind(&config.api.bind) {
-        return;
+        return Ok(());
     }
 
-    config.api.api_key = generate_api_key();
-    info!("API/Web 监听非本地地址且未配置 API key，已自动生成并写入配置文件");
+    config.api.api_key = generate_api_key()?;
+    info!("API/Web 监听非本地地址且未配置 Web UI 密码，已自动生成并写入配置文件");
+    Ok(())
 }
 
 fn is_loopback_bind(bind: &str) -> bool {
-    bind.starts_with("127.") || bind.starts_with("localhost:") || bind.starts_with("[::1]:")
+    if let Ok(socket_addr) = bind.parse::<SocketAddr>() {
+        return socket_addr.ip().is_loopback();
+    }
+
+    let Some((host, port)) = bind.rsplit_once(':') else {
+        return false;
+    };
+
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return ip.is_loopback();
+    }
+
+    format!("{host}:{port}")
+        .to_socket_addrs()
+        .map(|mut addrs| addrs.all(|addr| addr.ip().is_loopback()))
+        .unwrap_or(false)
 }
 
-fn generate_api_key() -> String {
+fn generate_api_key() -> Result<String> {
     let mut bytes = [0_u8; 32];
-    if std::fs::File::open("/dev/urandom")
+    std::fs::File::open("/dev/urandom")
         .and_then(|mut file| std::io::Read::read_exact(&mut file, &mut bytes))
-        .is_err()
-    {
-        let now = now_unix().to_le_bytes();
-        for (index, byte) in bytes.iter_mut().enumerate() {
-            *byte = now[index % now.len()] ^ (index as u8).wrapping_mul(31);
-        }
-    }
+        .map_err(|e| anyhow!("无法从系统随机源读取安全随机数: {e}"))?;
 
     let mut key = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         use std::fmt::Write as _;
         let _ = write!(key, "{byte:02x}");
     }
-    key
+    Ok(key)
 }
 
 fn now_unix() -> u64 {

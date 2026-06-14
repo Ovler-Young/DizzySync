@@ -11,13 +11,17 @@ impl DizzylabClient {
         // Step 1: GET login page to obtain csrftoken cookie
         let login_page_url = "https://www.dizzylab.net/albums/login/";
         let response = self.client.get(login_page_url).send().await?;
+        let login_page_status = response.status();
+
+        if self.debug {
+            debug!("登录页面状态码: {}", login_page_status);
+        }
+        if !login_page_status.is_success() {
+            return Err(anyhow!("获取登录页面失败，HTTP {}", login_page_status));
+        }
 
         let csrf_token = self.extract_csrftoken_from_response(&response)?;
         debug!("获取到 csrftoken");
-
-        if self.debug {
-            debug!("登录页面状态码: {}", response.status());
-        }
 
         // Step 2: POST web login form to establish session cookies
         let form_params = [
@@ -35,8 +39,12 @@ impl DizzylabClient {
             .send()
             .await?;
 
+        let web_login_status = web_login_resp.status();
         if self.debug {
-            debug!("网页登录响应状态码: {}", web_login_resp.status());
+            debug!("网页登录响应状态码: {}", web_login_status);
+        }
+        if !(web_login_status.is_success() || web_login_status.is_redirection()) {
+            return Err(anyhow!("网页登录失败，HTTP {}", web_login_status));
         }
 
         info!("网页会话已建立");
@@ -56,7 +64,15 @@ impl DizzylabClient {
             .send()
             .await?;
 
+        let api_status = api_resp.status();
         let api_resp_text = api_resp.text().await?;
+        if !api_status.is_success() {
+            return Err(anyhow!(
+                "API 登录失败，HTTP {}: {}",
+                api_status,
+                &api_resp_text[..api_resp_text.len().min(200)]
+            ));
+        }
         if self.debug {
             debug!("API 登录响应: {}", api_resp_text);
         }
