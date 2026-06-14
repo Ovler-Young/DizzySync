@@ -1,128 +1,250 @@
-# DizzySync - Dizzylab自动同步器
+# DizzySync - Dizzylab 自动同步器
 
-一个用Rust编写的Dizzylab音乐自动同步工具，可以自动下载你购买的所有专辑。
+DizzySync 是一个用 Rust 编写的 Dizzylab 音乐同步工具。它可以下载已购买专辑，并提供同一个 Rust 进程托管的 HTTP API 与 Web 控制台，用于管理配置、浏览专辑和触发同步任务。
 
 ## 特性
 
-- 🎵 自动同步所有已购买的专辑
-- 🎛️ 支持多种音质格式（128kbps/320kbps MP3/FLAC/特典）
-- ⚡ 单线程下载，避免给服务器造成压力
-- 🔧 基于TOML的简单配置
-- 🖥️ 命令行界面（未来将支持GUI）
+- 🎵 同步已购买专辑，支持全量同步和指定专辑同步
+- 🎛️ 支持 128kbps MP3、320kbps MP3、FLAC、特典内容
+- 🧾 生成封面、README 与 NFO 元数据
+- 🔧 TOML 配置文件，可通过 Web UI/API 生成和维护
+- 🌐 内置 Web 控制台：React + TypeScript + Ant Design
+- 🚀 单进程部署：Rust 同时提供 `/api/*` 与前端静态文件
+- 🐳 Docker Compose 一键部署，仅需填写登录凭据
+- 📦 CI 构建 Docker 镜像并发布到 GHCR
 
-## 安装
+## 快速开始：Docker Compose（推荐）
 
-### 从源码编译
-
-1. 确保安装了Rust (1.70+)
-2. 克隆仓库并编译：
+Docker 部署只暴露一个端口。用户只需要在 `.env` 中填写 Dizzylab 登录凭据；首次启动时 DizzySync 会自动生成 `/config/config.toml`，之后可通过 Web UI/API 管理配置。
 
 ```bash
-git clone https://github.com/Ovler-Young/dizzysync.git
-cd dizzysync
+mkdir dizzysync && cd dizzysync
+curl -fsSLO https://raw.githubusercontent.com/Ovler-Young/DizzySync/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/Ovler-Young/DizzySync/main/.env.example
+cp .env.example .env
+```
+
+编辑 `.env`：
+
+```env
+DIZZYSYNC_USERNAME=your_username_here
+DIZZYSYNC_PASSWORD=your_password_here
+
+# 推荐设置一个长随机值；留空时服务会在首次启动时自动生成并保存到 TOML。
+DIZZYSYNC_API_KEY=
+
+DIZZYSYNC_PORT=8787
+DIZZYSYNC_DATA_DIR=./DizzySync
+```
+
+启动：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+访问 Web 控制台：
+
+```text
+http://localhost:8787
+```
+
+如果设置了 `DIZZYSYNC_API_KEY`，在页面右上角输入 API Key 后再操作。若留空并由服务自动生成，可查看持久化配置卷中的 `config.toml` 获取 `api.api_key`，也可在 Web UI 中重新设置。
+
+### Compose 部署结构
+
+- 镜像：`ghcr.io/ovler-young/dizzysync:latest`
+- 端口：宿主 `${DIZZYSYNC_PORT:-8787}` → 容器 `8787`
+- 配置卷：`dizzysync-config:/config`
+- 下载目录：`${DIZZYSYNC_DATA_DIR:-./DizzySync}:/data`
+- 容器内前端目录：`/app/web`
+- 容器内配置文件：`/config/config.toml`
+
+Compose 文件不会触发本地 Docker build；镜像由 GitHub Actions 构建并发布到 GHCR。
+
+## 从源码运行
+
+### 依赖
+
+- Rust stable
+- Node.js 24+
+- pnpm 11+
+
+### 构建前端
+
+```bash
+cd web
+pnpm install --frozen-lockfile
+pnpm build
+cd ..
+```
+
+### 构建 Rust 二进制
+
+```bash
 cargo build --release
 ```
 
-编译完成后，可执行文件位于 `target/release/dizzysync`
+二进制位于 `target/release/dizzysync`。
 
 ## 使用方法
 
-### 1. 创建配置文件
+### 创建默认配置
 
 ```bash
-./dizzysync --init
+./target/release/dizzysync --init
 ```
 
-这会创建一个默认的 `config.toml` 配置文件。
+生成 `config.toml` 后，填写用户名、密码、下载格式和输出目录。
 
-### 2. 配置Cookie
-
-编辑 `config.toml` 文件，设置你的Dizzylab cookie：
-
-1. 在浏览器中登录 Dizzylab
-2. 打开开发者工具 (F12)
-3. 在网络选项卡中找到任意请求
-4. 复制Cookie头的值
-5. 将cookie值粘贴到配置文件中
-
-Cookie格式示例：
-```
-sessionid=your_session_id_here; csrftoken=your_csrf_token_here
-```
-
-### 3. 运行同步
+### CLI 同步
 
 ```bash
-# 干运行 - 仅列出专辑，不下载
-./dizzysync --dry-run
+# 干运行：仅列出专辑，不下载
+./target/release/dizzysync --dry-run
 
 # 开始同步
-./dizzysync
+./target/release/dizzysync
 
 # 仅下载元数据（专辑信息、封面、README、NFO），不下载音频文件
-./dizzysync --metadata-only
+./target/release/dizzysync --metadata-only
 
-# 仅下载指定ID的专辑
-./dizzysync --id dts
-
-# 组合使用：仅下载指定专辑的元数据
-./dizzysync --id dts --metadata-only
+# 仅下载指定 ID 的专辑
+./target/release/dizzysync --id SWQX-01
 
 # 使用自定义配置文件
-./dizzysync -c /path/to/config.toml
+./target/release/dizzysync -c /path/to/config.toml
 
-# 更多命令行选项示例
-./dizzysync --skip-existing                    # 跳过已存在的目录（默认true）
-./dizzysync --skip-existing false              # 不跳过已存在的目录
-./dizzysync --single-threaded                  # 启用单线程模式（默认true）
-./dizzysync --single-threaded false            # 禁用单线程模式
-./dizzysync --generate-readme false --generate-nfo false  # 不生成README和NFO文件
-./dizzysync -o ./MyMusic                       # 指定输出目录
-./dizzysync --output-dir /path/to/music        # 指定输出目录（完整格式）
+# 指定输出目录
+./target/release/dizzysync --output-dir /path/to/music
 ```
 
-## 配置选项
+### 启动 API 与 Web 控制台
 
-**注意**: 大部分配置选项都可以通过命令行参数覆盖。
+```bash
+./target/release/dizzysync \
+  --api-server \
+  --config config.toml \
+  --api-bind 127.0.0.1:8787 \
+  --web-root web/dist
+```
+
+常用参数：
+
+- `--api-server`：启动 HTTP API 与 Web 控制台
+- `--api-bind ADDR`：监听地址，例如 `0.0.0.0:8787`
+- `--api-key KEY`：设置 API Key；设置后请求必须携带 `X-API-Key` 或 `Authorization: Bearer <key>`
+- `--web-root DIR`：前端静态文件目录
+- `-c, --config FILE`：配置文件路径
+
+安全默认值：API 默认监听 `127.0.0.1:8787`。如果绑定到非本机地址且未设置 API Key，服务会自动生成 API Key 并保存到配置文件。
+
+## Web 控制台
+
+Web 控制台使用 React、TypeScript、Ant Design 与 Vite 构建，由 Rust 服务直接托管，不需要 Caddy、Nginx 或单独的前端服务器。
+
+主要功能：
+
+- 查看服务状态、登录用户和当前同步任务
+- 输入/保存 API Key
+- 浏览已购专辑列表
+- 查看专辑详情、曲目和标签
+- 触发全量同步或指定专辑同步
+- 编辑配置并保存到 TOML
+- 查看内置配置指南
+
+密码和 API Key 在配置表单中留空表示保持原值；保存时不会把空字符串写入 TOML。
+
+## HTTP API
+
+所有 API 路由位于 `/api` 下。
+
+认证方式（设置 API Key 后）：
+
+```http
+X-API-Key: your_api_key
+```
+
+或：
+
+```http
+Authorization: Bearer your_api_key
+```
+
+端点摘要：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/health` | 健康检查 |
+| `GET` | `/api/status` | 服务状态、用户信息、当前同步任务 |
+| `GET` | `/api/config` | 读取公开配置（密码/API Key 会脱敏） |
+| `PUT` | `/api/config` | 更新配置并写入 TOML |
+| `POST` | `/api/config/bootstrap` | 从环境变量/默认值引导配置 |
+| `GET` | `/api/albums` | 获取已购专辑列表 |
+| `GET` | `/api/albums/{id}` | 获取指定专辑详情 |
+| `POST` | `/api/sync` | 启动全量同步 |
+| `POST` | `/api/sync/{id}` | 启动指定专辑同步 |
+
+当前 API 同一时间只允许一个同步任务运行；如果已有任务在运行，新同步请求会返回冲突错误。
+
+## 配置文件
+
+配置示例见 [`config.example.toml`](config.example.toml)。主要配置段：
+
+```toml
+[user]
+username = "your_username_here"
+password = "your_password_here"
+
+[download]
+formats = ["320", "FLAC"]
+
+[paths]
+output_dir = "./DizzySync"
+directory_template = "{album}/@{label}"
+
+[behavior]
+skip_existing = true
+single_threaded = true
+max_concurrent_albums = 1
+generate_readme = true
+generate_nfo = true
+metadata_only = false
+
+[api]
+bind = "127.0.0.1:8787"
+api_key = ""
+web_root = "./web/dist"
+```
 
 ### 下载格式
 
-在 `config.toml` 中配置要下载的格式：
+- `"128"`：128kbps MP3
+- `"320"`：320kbps MP3
+- `"FLAC"`：无损 FLAC
+- `"gift"`：特典内容
 
-```toml
-[download]
-formats = ["320", "FLAC"]  # 可选: "128", "320", "FLAC", "gift"
-```
+注意：`"128"` 与 `"320"` 都会输出 `.mp3`，不能同时选择。
 
-- `"128"` - 128kbps MP3 (较小文件)
-- `"320"` - 320kbps MP3 (高质量)
-- `"FLAC"` - 无损FLAC (最高质量)
-- `"gift"` - 特典内容
+### 目录模板变量
 
-### 文件组织
+- `{album}`：专辑名
+- `{label}`：厂牌名
+- `{authors}`：首曲目的作者名
+- `{year}`：发布年份
+- `{date}`：发布日期（YYYY-MM-DD）
 
-#### 目录模板
+示例：
 
 ```toml
 [paths]
-# 自定义目录结构，支持变量替换
-directory_template = "{album}/@{label}"  # 默认: 专辑名/@厂牌名
-# directory_template = "{year}/{label}/{album}"  # 按年份分类
-# directory_template = "{label}/{album}"  # 按厂牌分类
+directory_template = "{year}/{label}/{album}"
 ```
 
-**支持的变量：**
-- `{album}` - 专辑名
-- `{label}` - 厂牌名
-- `{authors}` - 作者名
-- `{year}` - 当前年份
-- `{date}` - 当前日期 (YYYY-MM-DD)
+### 文件结构示例
 
-#### 文件结构
-
-音频文件（128/320/FLAC）直接放在专辑目录下，特典内容放在 `gift/` 子目录中：
-
-```
+```text
 DizzySync/
 └─ Example Album/
    └─ @Example Label/
@@ -137,126 +259,50 @@ DizzySync/
       └─ album.nfo
 ```
 
-### 元数据模式
+## 开发与检查
 
-可以通过配置文件或命令行参数启用元数据模式：
-
-```toml
-[behavior]
-metadata_only = true  # 仅下载元数据，不下载音频文件
-```
-
-或使用命令行参数：
-```bash
-./dizzysync --metadata-only
-```
-
-元数据模式会下载：
-- 专辑信息和详细描述
-- 专辑封面（如果可用）
-- README.md 文件（包含专辑详细信息）
-- NFO 文件（媒体库兼容格式）
-
-但**不会**下载任何音频文件。这对以下场景很有用：
-- 快速建立音乐库索引
-- 节省存储空间
-- 仅获取专辑信息进行浏览
-
-### 指定专辑下载
-
-可以使用`--id`参数下载指定ID的单个专辑：
+前端检查：
 
 ```bash
-./dizzysync --id SWQX-01
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web check
+pnpm --dir web typecheck
+pnpm --dir web build
 ```
 
-这对以下场景很有用：
-- 只想下载特定的专辑
-- 测试下载功能
-- 重新下载某个专辑
-- 与其他参数组合使用（如`--metadata-only`）
+Rust 检查：
 
-专辑ID通常可以从Dizzylab的专辑页面URL中获取，格式如：`https://www.dizzylab.net/d/SWQX-01/`
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
 
-### 命令行选项
-
-以下命令行参数可以覆盖配置文件设置：
-
-**注意**: 对于布尔值参数，可以省略值（默认为true）或明确指定true/false。例如：
-- `--skip-existing` 等同于 `--skip-existing true`
-- `--skip-existing false` 明确设为false
-
-#### 下载行为
-- `--metadata-only` - 仅下载元数据，不下载音频文件
-- `--skip-existing [true/false]` - 跳过已存在的目录（省略值时默认为true）
-- `--single-threaded [true/false]` - 单线程模式（省略值时默认为true）
-
-#### 文件生成
-- `--generate-readme [true/false]` - 生成README.md文件（省略值时默认为true）
-- `--generate-nfo [true/false]` - 生成NFO文件（省略值时默认为true）
-
-#### 文件组织
-- `-o DIR`, `--output-dir DIR` - 指定输出目录
-
-#### 其他
-- `--id ALBUM_ID` - 仅下载指定ID的专辑
-- `--dry-run` - 仅列出专辑，不下载
-- `--debug` - 启用调试模式
-- `-c FILE`, `--config FILE` - 指定配置文件路径
-
-## 项目路线图
-
-### Phase 1: Core Demo (当前)
-- [x] 配置文件解析
-- [x] HTTP客户端和cookie管理
-- [x] 用户信息获取
-- [x] 专辑列表获取
-- [x] 文件下载功能
-- [x] 文件组织逻辑
-- [x] 命令行界面
-- [x] 元数据模式
-- [x] 指定专辑ID下载
-- [x] 命令行参数覆盖配置
-
-### Phase 2: GUI界面 (计划中)
-- [ ] Tauri框架集成
-- [ ] Web前端界面
-- [ ] 下载进度显示
-- [ ] 配置管理界面
-
-### Phase 3: 功能增强 (未来)
-- [ ] 断点续传
-- [ ] 增量同步
-- [ ] 多用户支持
-- [ ] 自动更新
+CI 会运行 Rust fmt/clippy/test、前端 Biome/typecheck/build，并使用 Docker Buildx 缓存构建镜像。`main` 分支和 tag 会发布镜像到 GHCR；pull request 只构建验证，不推送镜像。
 
 ## 故障排除
 
-### 常见问题
+### 无法登录
 
-1. **"无法从页面中提取用户ID"**
-   - 检查cookie是否正确
-   - 确保cookie没有过期
+- 检查 `[user]` 中的用户名和密码是否正确
+- 如果用 Docker Compose，确认 `.env` 中 `DIZZYSYNC_USERNAME` 与 `DIZZYSYNC_PASSWORD` 已设置
+- 尝试在 Web UI 中重新保存凭据
 
-2. **"无法从页面中提取下载密钥"**
-   - 某些专辑可能不支持特定格式
-   - 尝试其他格式或检查专辑页面
+### Web UI 提示未授权
 
-3. **下载失败**
-   - 网络连接问题
-   - 服务器临时不可用
-   - Cookie过期
+- 如果设置了 API Key，请在页面右上角输入相同值
+- Docker 自动生成 API Key 时，可查看 `/config/config.toml` 中 `[api].api_key`
 
-### 获取帮助
+### 下载失败
 
-如果遇到问题，请：
-1. 检查日志输出
-2. 尝试使用 `--dry-run` 模式
-3. 提交issue并附上错误信息
+- 网络连接问题或 Dizzylab 临时不可用
+- 某些专辑可能不支持所选格式
+- 尝试仅下载元数据或指定专辑排查问题
+- 查看容器日志：`docker compose logs -f dizzysync`
 
 ## 免责声明
 
-此工具仅用于下载用户已合法购买的内容。请遵守Dizzylab的服务条款和版权法律。
+此工具仅用于下载用户已合法购买的内容。请遵守 Dizzylab 的服务条款和版权法律。
 
 ## License
 

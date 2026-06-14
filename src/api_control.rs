@@ -294,8 +294,10 @@ async fn bootstrap_config(
     }
 
     let current = state.config.read().await.clone();
-    let mut config = Config::default();
-    config.api = current.api;
+    let mut config = Config {
+        api: current.api,
+        ..Config::default()
+    };
     config.apply_env_overrides(false);
     if let Some(username) = req.username {
         config.user.username = username;
