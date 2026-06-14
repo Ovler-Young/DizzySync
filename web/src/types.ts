@@ -9,6 +9,7 @@ export interface StatusResponse {
   configured: boolean;
   requires_auth: boolean;
   user: UserInfo | null;
+  users: UserInfo[];
   job: JobState;
   last_error: string | null;
 }
@@ -63,6 +64,7 @@ export interface ConfigResponse {
 
 export interface PublicConfig {
   user: PublicUserConfig;
+  users: PublicUserConfig[];
   download: PublicDownloadConfig;
   paths: PublicPathsConfig;
   behavior: PublicBehaviorConfig;
@@ -101,11 +103,14 @@ export interface PublicApiConfig {
   web_root: string;
 }
 
+export interface UpdateUserConfig {
+  username?: string;
+  password?: string;
+}
+
 export interface UpdateConfigRequest {
-  user?: {
-    username?: string;
-    password?: string;
-  };
+  user?: UpdateUserConfig;
+  users?: UpdateUserConfig[];
   download?: {
     formats?: string[];
   };
