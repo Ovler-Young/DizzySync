@@ -385,6 +385,15 @@ async fn status(State(state): State<ApiState>, headers: HeaderMap) -> Json<Statu
         .iter()
         .filter_map(|session| session.user.clone())
         .collect::<Vec<_>>();
+    let schedule = {
+        let schedule = state.schedule.read().await;
+        if authenticated {
+            schedule.clone()
+        } else {
+            redacted_schedule_state(&*schedule)
+        }
+    };
+
     Json(StatusResponse {
         status: "ok",
         ready: !sessions.is_empty(),
@@ -397,11 +406,7 @@ async fn status(State(state): State<ApiState>, headers: HeaderMap) -> Json<Statu
         } else {
             JobState::Idle
         },
-        schedule: if authenticated {
-            state.schedule.read().await.clone()
-        } else {
-            redacted_schedule_state(&state.schedule.read().await)
-        },
+        schedule,
         last_error: if authenticated {
             state.last_error.read().await.clone()
         } else {
