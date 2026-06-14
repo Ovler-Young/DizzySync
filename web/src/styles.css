@@ -3,15 +3,50 @@ body {
   background: #f5f7fb;
 }
 
+.app-header {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid rgba(5, 5, 5, 0.06);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  display: flex;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 #root {
   min-height: 100vh;
 }
 
 .app-logo {
-  color: #fff;
+  color: #111827;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.auth-layout {
+  align-items: center;
+  background:
+    radial-gradient(circle at top left, rgba(22, 119, 255, 0.18), transparent 30%),
+    linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.auth-language {
+  position: absolute;
+  right: 24px;
+  top: 24px;
+}
+
+.login-card {
+  border: 0;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.14);
+  margin-top: 12vh;
+  max-width: 460px;
+  width: 100%;
 }
 
 .page-content {
@@ -30,6 +65,19 @@ body {
 .guide-list {
   margin-bottom: 0;
   padding-left: 20px;
+}
+
+.settings-grid {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+}
+
+@media (max-width: 1080px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .muted {

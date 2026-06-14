@@ -3,6 +3,7 @@ import type {
   ConfigResponse,
   DiscInfo,
   DiscListItem,
+  LogEntry,
   StatusResponse,
   UpdateConfigRequest,
 } from "./types.ts";
@@ -57,6 +58,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   status: () => request<StatusResponse>("/api/status"),
   config: () => request<ConfigResponse>("/api/config"),
+  logs: () => request<LogEntry[]>("/api/logs"),
   updateConfig: (body: UpdateConfigRequest) =>
     request<ConfigResponse>("/api/config", {
       method: "PUT",

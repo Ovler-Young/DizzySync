@@ -33,6 +33,7 @@ struct ApiState {
     config_path: String,
     job: Arc<Mutex<JobState>>,
     last_error: Arc<RwLock<Option<String>>>,
+    logs: Arc<Mutex<Vec<LogEntry>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,6 +56,13 @@ struct StatusResponse {
 
 #[derive(Debug, Serialize)]
 struct MessageResponse {
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct LogEntry {
+    timestamp: u64,
+    level: &'static str,
     message: String,
 }
 
@@ -89,6 +97,7 @@ struct PublicDownloadConfig {
 struct PublicPathsConfig {
     output_dir: String,
     directory_template: String,
+    output_dir_locked: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,6 +105,7 @@ struct PublicBehaviorConfig {
     skip_existing: bool,
     single_threaded: bool,
     max_concurrent_albums: usize,
+    max_concurrent_albums_locked: bool,
     generate_readme: bool,
     generate_nfo: bool,
     debug: bool,
@@ -176,7 +186,9 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         config_path: options.config_path,
         job: Arc::new(Mutex::new(JobState::Idle)),
         last_error: Arc::new(RwLock::new(None)),
+        logs: Arc::new(Mutex::new(Vec::new())),
     };
+    push_log(&state, "info", "API/Web 控制服务初始化完成").await;
 
     if let Err(e) = ensure_logged_in(&state).await {
         error!("API 服务启动时登录失败: {}", e);
@@ -188,6 +200,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
     let api = Router::new()
         .route("/health", get(health))
         .route("/status", get(status))
+        .route("/logs", get(get_logs))
         .route("/config", get(get_config).put(update_config))
         .route("/config/bootstrap", post(bootstrap_config))
         .route("/albums", get(list_albums))
@@ -230,6 +243,14 @@ async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
     })
 }
 
+async fn get_logs(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<LogEntry>>, ApiError> {
+    authorize(&state, &headers).await?;
+    Ok(Json(state.logs.lock().await.clone()))
+}
+
 async fn get_config(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -252,6 +273,7 @@ async fn update_config(
 
     let mut next_config = state.config.read().await.clone();
     apply_config_update(&mut next_config, req);
+    next_config.apply_env_overrides(true);
     validate_credentials(&next_config).map_err(ApiError::bad_request)?;
     validate_formats(&next_config).map_err(ApiError::bad_request)?;
 
@@ -268,6 +290,7 @@ async fn update_config(
     *state.client.write().await = Some(next_client);
     *state.token.write().await = Some(next_token);
     *state.user.write().await = next_user;
+    push_log(&state, "info", "配置已验证并保存").await;
 
     let config = state.config.read().await.clone();
     Ok(Json(ConfigResponse {
@@ -312,6 +335,7 @@ async fn bootstrap_config(
     *state.client.write().await = None;
     *state.token.write().await = None;
     *state.user.write().await = None;
+    push_log(&state, "info", "已创建/重置配置文件").await;
 
     Ok(Json(ConfigResponse {
         config_path: state.config_path.clone(),
@@ -327,6 +351,12 @@ async fn list_albums(
     authorize(&state, &headers).await?;
     let (client, token) = ensure_logged_in(&state).await?;
     let albums = client.get_my_discs(&token).await?;
+    push_log(
+        &state,
+        "info",
+        format!("已加载 {} 张已购专辑", albums.len()),
+    )
+    .await;
     Ok(Json(albums))
 }
 
@@ -379,19 +409,33 @@ async fn start_job(
     }
 
     *state.last_error.write().await = None;
+    push_log(
+        &state,
+        "info",
+        album_id
+            .as_ref()
+            .map(|id| format!("同步任务已启动：专辑 {id}"))
+            .unwrap_or_else(|| "同步任务已启动：全部专辑".to_string()),
+    )
+    .await;
     let job_state = state.job.clone();
     let last_error = state.last_error.clone();
+    let logs = state.logs.clone();
 
     tokio::spawn(async move {
         let job_handle = tokio::spawn(async move { run_sync_job(state, album_id).await });
         match job_handle.await {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => {
+                push_log_raw(&logs, "info", "同步任务已完成").await;
+            }
             Ok(Err(e)) => {
                 error!("API 触发的同步任务失败: {}", e);
+                push_log_raw(&logs, "error", format!("同步任务失败：{e}")).await;
                 *last_error.write().await = Some(e.to_string());
             }
             Err(e) => {
                 error!("API 触发的同步任务异常: {}", e);
+                push_log_raw(&logs, "error", format!("同步任务异常：{e}")).await;
                 *last_error.write().await = Some(e.to_string());
             }
         }
@@ -444,6 +488,7 @@ async fn ensure_logged_in(state: &ApiState) -> Result<(DizzylabClient, String)> 
     *state.client.write().await = Some(client.clone());
     *state.token.write().await = Some(token.clone());
     *state.user.write().await = user;
+    push_log(state, "info", "已登录 Dizzylab").await;
     Ok((client, token))
 }
 
@@ -583,11 +628,13 @@ impl PublicConfig {
             paths: PublicPathsConfig {
                 output_dir: config.paths.output_dir.display().to_string(),
                 directory_template: config.paths.directory_template.clone(),
+                output_dir_locked: std::env::var("DIZZYSYNC_OUTPUT_DIR").is_ok(),
             },
             behavior: PublicBehaviorConfig {
                 skip_existing: config.behavior.skip_existing,
                 single_threaded: config.behavior.single_threaded,
-                max_concurrent_albums: config.behavior.max_concurrent_albums,
+                max_concurrent_albums: config.behavior.max_concurrent_albums.max(1),
+                max_concurrent_albums_locked: false,
                 generate_readme: config.behavior.generate_readme,
                 generate_nfo: config.behavior.generate_nfo,
                 debug: config.behavior.debug,
@@ -654,6 +701,27 @@ fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+async fn push_log(state: &ApiState, level: &'static str, message: impl Into<String>) {
+    push_log_raw(&state.logs, level, message).await;
+}
+
+async fn push_log_raw(
+    logs: &Arc<Mutex<Vec<LogEntry>>>,
+    level: &'static str,
+    message: impl Into<String>,
+) {
+    let mut logs = logs.lock().await;
+    logs.push(LogEntry {
+        timestamp: now_unix(),
+        level,
+        message: message.into(),
+    });
+    if logs.len() > 200 {
+        let excess = logs.len() - 200;
+        logs.drain(0..excess);
+    }
 }
 
 struct ApiError {
