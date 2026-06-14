@@ -2,6 +2,7 @@ import {
   AppstoreOutlined,
   BarsOutlined,
   EyeOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
   SettingOutlined,
   SyncOutlined,
@@ -28,6 +29,7 @@ interface AlbumTableProps {
   albums: DiscListItem[];
   loading: boolean;
   syncDisabled: boolean;
+  onPlay: (id: string) => void;
   onRefresh: () => void;
   onShow: (id: string) => void;
   onSync: (id: string) => void;
@@ -36,6 +38,7 @@ interface AlbumTableProps {
 interface AlbumActionsProps {
   album: DiscListItem;
   syncDisabled: boolean;
+  onPlay: (id: string) => void;
   onShow: (id: string) => void;
   onSync: (id: string) => void;
 }
@@ -158,13 +161,20 @@ function LocalTag({ album }: { album: DiscListItem }) {
   return details ? <Tooltip title={details}>{tag}</Tooltip> : tag;
 }
 
-function AlbumActions({ album, syncDisabled, onShow, onSync }: AlbumActionsProps) {
+function AlbumActions({ album, syncDisabled, onPlay, onShow, onSync }: AlbumActionsProps) {
   const { t } = useI18n();
+  const playAlbum = useCallback(() => onPlay(album.id), [album.id, onPlay]);
   const showAlbum = useCallback(() => onShow(album.id), [album.id, onShow]);
   const syncAlbum = useCallback(() => onSync(album.id), [album.id, onSync]);
+  const playable = Boolean(
+    album.local && (album.local.downloaded_tracks > 0 || album.local.audio_files > 0),
+  );
 
   return (
     <Space wrap={true}>
+      <Button disabled={!playable} icon={<PlayCircleOutlined />} onClick={playAlbum}>
+        {t("album.play")}
+      </Button>
       <Button icon={<EyeOutlined />} onClick={showAlbum}>
         {t("album.detail")}
       </Button>
@@ -195,6 +205,7 @@ export function AlbumTable({
   albums,
   loading,
   syncDisabled,
+  onPlay,
   onRefresh,
   onShow,
   onSync,
@@ -290,11 +301,17 @@ export function AlbumTable({
         key: "actions",
         width: 180,
         render: (_, album) => (
-          <AlbumActions album={album} syncDisabled={syncDisabled} onShow={onShow} onSync={onSync} />
+          <AlbumActions
+            album={album}
+            syncDisabled={syncDisabled}
+            onPlay={onPlay}
+            onShow={onShow}
+            onSync={onSync}
+          />
         ),
       },
     }),
-    [onShow, onSync, syncDisabled, t],
+    [onPlay, onShow, onSync, syncDisabled, t],
   );
 
   const columns = useMemo(
@@ -360,6 +377,20 @@ export function AlbumTable({
               hoverable={true}
               cover={<AlbumCover album={album} large={true} />}
               actions={[
+                <Button
+                  key="play"
+                  disabled={
+                    !(
+                      album.local &&
+                      (album.local.downloaded_tracks > 0 || album.local.audio_files > 0)
+                    )
+                  }
+                  type="link"
+                  icon={<PlayCircleOutlined />}
+                  onClick={() => onPlay(album.id)}
+                >
+                  {t("album.play")}
+                </Button>,
                 <Button
                   key="detail"
                   type="link"

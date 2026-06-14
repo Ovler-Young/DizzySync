@@ -261,6 +261,19 @@ body {
   min-width: 0;
 }
 
+.global-player-cover {
+  border-radius: 10px;
+  display: block;
+  flex: 0 0 56px;
+  height: 56px;
+  object-fit: cover;
+  width: 56px;
+}
+
+.global-player-cover-placeholder {
+  background: linear-gradient(135deg, #f1f5f9, #e5e7eb);
+}
+
 .global-player-album {
   color: rgba(0, 0, 0, 0.45);
   font-size: 12px;
@@ -277,6 +290,23 @@ body {
 .global-player-loop-active {
   border-color: #1677ff;
   color: #1677ff;
+}
+
+.global-player-queue {
+  max-height: min(420px, 55vh);
+  min-width: 320px;
+  overflow: auto;
+}
+
+.global-player-queue .ant-list-item {
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.global-player-queue .ant-list-item:hover,
+.global-player-queue-active {
+  background: rgba(22, 119, 255, 0.08);
 }
 
 .global-player-empty .ant-empty-image {

@@ -5,8 +5,9 @@ import {
   RetweetOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
-import { Button, Empty, Space, Tooltip, Typography } from "antd";
+import { Button, Empty, Image, List, Popover, Space, Tooltip, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
@@ -21,6 +22,7 @@ export interface PlayerTrack {
   title: string;
   authors: string;
   path: string;
+  cover?: string | null;
 }
 
 export interface PlayerSelection {
@@ -47,6 +49,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previousRequestId = useRef<number | null>(null);
+  const shouldPlayAfterSelection = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopMode, setLoopMode] = useState<PlaybackLoopMode>("none");
 
@@ -54,6 +57,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   const activeIndex = clampIndex(selection ? selection.index : 0, tracks.length);
   const currentTrack = tracks[activeIndex] ?? null;
   const currentSrc = currentTrack ? localFileUrl(currentTrack.path) : undefined;
+  const currentCover = currentTrack?.cover ?? null;
   const hasPrevious = tracks.length > 1 && (activeIndex > 0 || loopMode === "all");
   const hasNext = tracks.length > 1 && (activeIndex < tracks.length - 1 || loopMode === "all");
 
@@ -66,27 +70,42 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       : currentTrack.title;
   }, [currentTrack, t]);
 
+  const preservePlaybackForSelection = useCallback(
+    (forcePlay = false) => {
+      const audio = audioRef.current;
+      shouldPlayAfterSelection.current = forcePlay || isPlaying || Boolean(audio && !audio.paused);
+    },
+    [isPlaying],
+  );
+
   const selectPrevious = useCallback(() => {
     if (tracks.length === 0) {
       return;
     }
     if (activeIndex > 0) {
+      preservePlaybackForSelection();
       onSelectIndex(activeIndex - 1);
     } else if (loopMode === "all") {
+      preservePlaybackForSelection();
       onSelectIndex(tracks.length - 1);
     }
-  }, [activeIndex, loopMode, onSelectIndex, tracks.length]);
+  }, [activeIndex, loopMode, onSelectIndex, preservePlaybackForSelection, tracks.length]);
 
-  const selectNext = useCallback(() => {
-    if (tracks.length === 0) {
-      return;
-    }
-    if (activeIndex < tracks.length - 1) {
-      onSelectIndex(activeIndex + 1);
-    } else if (loopMode === "all") {
-      onSelectIndex(0);
-    }
-  }, [activeIndex, loopMode, onSelectIndex, tracks.length]);
+  const selectNext = useCallback(
+    (forcePlay = false) => {
+      if (tracks.length === 0) {
+        return;
+      }
+      if (activeIndex < tracks.length - 1) {
+        preservePlaybackForSelection(forcePlay);
+        onSelectIndex(activeIndex + 1);
+      } else if (loopMode === "all") {
+        preservePlaybackForSelection(forcePlay);
+        onSelectIndex(0);
+      }
+    },
+    [activeIndex, loopMode, onSelectIndex, preservePlaybackForSelection, tracks.length],
+  );
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -119,11 +138,26 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       return;
     }
 
-    if (previousRequestId.current !== selection.requestId) {
-      previousRequestId.current = selection.requestId;
+    const shouldPlay =
+      previousRequestId.current !== selection.requestId || shouldPlayAfterSelection.current;
+    previousRequestId.current = selection.requestId;
+    shouldPlayAfterSelection.current = false;
+
+    if (shouldPlay) {
       audio.play().catch(() => undefined);
     }
   }, [currentTrack, selection]);
+
+  const selectQueueIndex = useCallback(
+    (index: number) => {
+      if (index === activeIndex) {
+        return;
+      }
+      preservePlaybackForSelection();
+      onSelectIndex(index);
+    },
+    [activeIndex, onSelectIndex, preservePlaybackForSelection],
+  );
 
   const handleEnded = useCallback(() => {
     if (loopMode === "one") {
@@ -135,7 +169,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       return;
     }
     if (activeIndex < tracks.length - 1 || loopMode === "all") {
-      selectNext();
+      selectNext(true);
     } else {
       setIsPlaying(false);
     }
@@ -148,20 +182,60 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
     loopLabel = t("player.loopAll");
   }
 
+  const queueContent = (
+    <List
+      className="global-player-queue"
+      dataSource={tracks}
+      locale={{ emptyText: t("player.queueEmpty") }}
+      renderItem={(track, index) => {
+        const label = track.authors ? `${track.title} — ${track.authors}` : track.title;
+        return (
+          <List.Item
+            className={index === activeIndex ? "global-player-queue-active" : undefined}
+            onClick={() => selectQueueIndex(index)}
+          >
+            <Space align="center" size={8} style={{ minWidth: 0 }}>
+              <Typography.Text className="muted">
+                {String(index + 1).padStart(2, "0")}
+              </Typography.Text>
+              <Typography.Text strong={index === activeIndex} ellipsis={{ tooltip: label }}>
+                {label}
+              </Typography.Text>
+            </Space>
+          </List.Item>
+        );
+      }}
+      size="small"
+    />
+  );
+
   return (
     <section className="global-player" aria-label={t("player.title")}>
       <div className="global-player-info">
         {currentTrack ? (
-          <Space direction="vertical" size={0} style={{ width: "100%" }}>
-            <Typography.Text
-              className="global-player-album"
-              ellipsis={{ tooltip: currentTrack.albumTitle }}
-            >
-              {currentTrack.albumTitle}
-            </Typography.Text>
-            <Typography.Text strong={true} ellipsis={{ tooltip: trackLabel }}>
-              {trackLabel}
-            </Typography.Text>
+          <Space align="center" size={12} style={{ minWidth: 0, width: "100%" }}>
+            {currentCover ? (
+              <Image
+                alt={`${currentTrack.albumTitle} cover`}
+                className="global-player-cover"
+                preview={false}
+                referrerPolicy="no-referrer"
+                src={currentCover}
+              />
+            ) : (
+              <div className="global-player-cover global-player-cover-placeholder" />
+            )}
+            <Space direction="vertical" size={0} style={{ minWidth: 0, width: "100%" }}>
+              <Typography.Text
+                className="global-player-album"
+                ellipsis={{ tooltip: currentTrack.albumTitle }}
+              >
+                {currentTrack.albumTitle}
+              </Typography.Text>
+              <Typography.Text strong={true} ellipsis={{ tooltip: trackLabel }}>
+                {trackLabel}
+              </Typography.Text>
+            </Space>
           </Space>
         ) : (
           <Empty
@@ -188,7 +262,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
           />
         </Tooltip>
         <Tooltip title={t("player.next")}>
-          <Button disabled={!hasNext} icon={<StepForwardOutlined />} onClick={selectNext} />
+          <Button disabled={!hasNext} icon={<StepForwardOutlined />} onClick={() => selectNext()} />
         </Tooltip>
         <Tooltip title={loopLabel}>
           <Button
@@ -199,6 +273,11 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
             {loopLabel}
           </Button>
         </Tooltip>
+        <Popover content={queueContent} placement="top" title={t("player.queue")} trigger="click">
+          <Button disabled={tracks.length === 0} icon={<UnorderedListOutlined />}>
+            {t("player.queue")}
+          </Button>
+        </Popover>
         {currentTrack ? (
           <Button href={currentSrc} icon={<FolderOpenOutlined />} target="_blank">
             {t("detail.openLocalFile")}
