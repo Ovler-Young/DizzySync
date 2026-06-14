@@ -193,6 +193,7 @@ struct SyncRequest {
 
 pub async fn run(options: ApiServerOptions) -> Result<()> {
     let mut config = options.config.clone();
+    validate_schedule(&config)?;
     ensure_api_key_for_remote_bind(&mut config)?;
     config.save_to_file(&options.config_path)?;
 
@@ -742,17 +743,28 @@ fn start_scheduler(state: ApiState) {
                     ..current
                 };
 
-                match run_sync_job(run_state, None).await {
-                    Ok(()) => {
+                let job_handle = tokio::spawn(async move { run_sync_job(run_state, None).await });
+                match job_handle.await {
+                    Ok(Ok(())) => {
                         let current = schedule_state.read().await.clone();
                         *schedule_state.write().await = ScheduleState {
                             last_error: None,
                             ..current
                         };
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         let message = e.to_string();
                         error!("自动同步任务失败: {}", message);
+                        *last_error.write().await = Some(message.clone());
+                        let current = schedule_state.read().await.clone();
+                        *schedule_state.write().await = ScheduleState {
+                            last_error: Some(message),
+                            ..current
+                        };
+                    }
+                    Err(e) => {
+                        let message = format!("自动同步任务异常: {e}");
+                        error!("{}", message);
                         *last_error.write().await = Some(message.clone());
                         let current = schedule_state.read().await.clone();
                         *schedule_state.write().await = ScheduleState {
