@@ -6,6 +6,8 @@ export interface UserInfo {
 export interface StatusResponse {
   status: "ok";
   ready: boolean;
+  configured: boolean;
+  requires_auth: boolean;
   user: UserInfo | null;
   job: JobState;
   last_error: string | null;

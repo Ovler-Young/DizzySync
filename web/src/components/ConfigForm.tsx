@@ -13,10 +13,12 @@ import {
 } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
+import { useI18n } from "../i18n.tsx";
 import type { ConfigResponse, UpdateConfigRequest } from "../types.ts";
 
 interface ConfigFormProps {
   config: ConfigResponse | null;
+  mode?: "settings" | "onboarding";
   onSaved: (config: ConfigResponse, apiKey?: string) => void;
 }
 
@@ -36,17 +38,22 @@ interface ConfigFormValues {
   apiKey?: string;
 }
 
-const formatOptions = [
-  { label: "128kbps MP3", value: "128" },
-  { label: "320kbps MP3", value: "320" },
-  { label: "FLAC", value: "FLAC" },
-  { label: "特典 gift", value: "gift" },
-];
-
-export function ConfigForm({ config, onSaved }: ConfigFormProps) {
+export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormProps) {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
+  const isOnboarding = mode === "onboarding";
+
+  const formatOptions = useMemo(
+    () => [
+      { label: "128kbps MP3", value: "128" },
+      { label: "320kbps MP3", value: "320" },
+      { label: "FLAC", value: "FLAC" },
+      { label: "gift", value: "gift" },
+    ],
+    [],
+  );
 
   const initialValues = useMemo<ConfigFormValues | undefined>(() => {
     if (!config) {
@@ -79,7 +86,7 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
   const submit = useCallback(
     async (values: ConfigFormValues) => {
       if (values.formats.includes("128") && values.formats.includes("320")) {
-        message.error("128 和 320 不能同时选择，因为都会输出 .mp3 文件");
+        message.error(t("config.formatConflict"));
         return;
       }
 
@@ -87,15 +94,15 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
       const apiKey = values.apiKey?.trim();
       const payload: UpdateConfigRequest = {
         user: {
-          username: values.username,
+          username: values.username.trim(),
           ...(password ? { password } : {}),
         },
         download: {
           formats: values.formats,
         },
         paths: {
-          output_dir: values.outputDir,
-          directory_template: values.directoryTemplate,
+          output_dir: values.outputDir.trim(),
+          directory_template: values.directoryTemplate.trim(),
         },
         behavior: {
           skip_existing: values.skipExisting,
@@ -112,7 +119,7 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
       setSaving(true);
       try {
         const nextConfig = await api.updateConfig(payload);
-        message.success("配置已保存到 TOML");
+        message.success(t("config.saved"));
         form.setFieldValue("password", "");
         form.setFieldValue("apiKey", "");
         onSaved(nextConfig, apiKey || undefined);
@@ -122,62 +129,81 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
         setSaving(false);
       }
     },
-    [form, message, onSaved],
+    [form, message, onSaved, t],
   );
 
   return (
-    <Card title="设置">
+    <Card title={isOnboarding ? t("config.onboardingTitle") : t("config.title")}>
       <Typography.Paragraph type="secondary">
-        配置文件：{config?.config_path ?? "未知"}。密码和 API Key 留空表示保持当前值。
+        {t("config.description", { path: config?.config_path ?? t("config.unknown") })}
       </Typography.Paragraph>
       <Form form={form} layout="vertical" onFinish={submit}>
         <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
           <Form.Item
-            label="Dizzylab 用户名"
+            label={t("config.username")}
             name="username"
-            rules={[{ required: true, message: "请输入用户名" }]}
+            rules={[{ required: true, message: t("config.usernameRequired") }]}
           >
             <Input autoComplete="username" style={{ width: 280 }} />
           </Form.Item>
-          <Form.Item label="Dizzylab 密码" name="password">
+          <Form.Item
+            label={t("config.password")}
+            name="password"
+            rules={[
+              {
+                required: isOnboarding && !config?.config.user.has_password,
+                message: t("config.passwordRequired"),
+              },
+            ]}
+          >
             <Input.Password
               autoComplete="current-password"
-              placeholder="留空保持不变"
+              placeholder={t("config.passwordPlaceholder")}
               style={{ width: 280 }}
             />
           </Form.Item>
-          <Form.Item label="API Key" name="apiKey">
-            <Input.Password placeholder="留空保持不变" style={{ width: 280 }} />
+          <Form.Item label={t("config.webPassword")} name="apiKey">
+            <Input.Password
+              placeholder={t("config.webPasswordPlaceholder")}
+              style={{ width: 280 }}
+            />
           </Form.Item>
         </Space>
 
         <Form.Item
-          label="下载格式"
+          label={t("config.formats")}
           name="formats"
-          rules={[{ required: true, message: "请选择至少一种格式" }]}
+          rules={[{ required: true, message: t("config.formatsRequired") }]}
         >
           <Select mode="multiple" options={formatOptions} />
         </Form.Item>
 
         <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
           <Form.Item
-            label="输出目录"
+            label={t("config.outputDir")}
             name="outputDir"
-            rules={[{ required: true, message: "请输入输出目录" }]}
+            rules={[{ required: true, message: t("config.outputDirRequired") }]}
           >
             <Input style={{ width: 320 }} />
           </Form.Item>
           <Form.Item
-            label="目录模板"
+            label={t("config.directoryTemplate")}
             name="directoryTemplate"
-            rules={[{ required: true, message: "请输入目录模板" }]}
+            rules={[{ required: true, message: t("config.directoryTemplateRequired") }]}
           >
             <Input style={{ width: 320 }} />
           </Form.Item>
           <Form.Item
-            label="最大并发专辑数"
+            label={t("config.maxConcurrentAlbums")}
             name="maxConcurrentAlbums"
-            rules={[{ required: true, type: "number", min: 1, message: "请输入不小于 1 的并发数" }]}
+            rules={[
+              {
+                required: true,
+                type: "number",
+                min: 1,
+                message: t("config.maxConcurrentAlbumsRequired"),
+              },
+            ]}
           >
             <InputNumber min={1} style={{ width: 180 }} />
           </Form.Item>
@@ -185,28 +211,28 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
 
         <Space size="large" wrap={true}>
           <Form.Item name="skipExisting" valuePropName="checked">
-            <Checkbox>跳过已存在目录</Checkbox>
+            <Checkbox>{t("config.skipExisting")}</Checkbox>
           </Form.Item>
           <Form.Item name="singleThreaded" valuePropName="checked">
-            <Checkbox>单线程</Checkbox>
+            <Checkbox>{t("config.singleThreaded")}</Checkbox>
           </Form.Item>
           <Form.Item name="generateReadme" valuePropName="checked">
-            <Checkbox>生成 README</Checkbox>
+            <Checkbox>{t("config.generateReadme")}</Checkbox>
           </Form.Item>
           <Form.Item name="generateNfo" valuePropName="checked">
-            <Checkbox>生成 NFO</Checkbox>
+            <Checkbox>{t("config.generateNfo")}</Checkbox>
           </Form.Item>
           <Form.Item name="metadataOnly" valuePropName="checked">
-            <Checkbox>仅元数据</Checkbox>
+            <Checkbox>{t("config.metadataOnly")}</Checkbox>
           </Form.Item>
           <Form.Item name="debug" valuePropName="checked">
-            <Checkbox>调试日志</Checkbox>
+            <Checkbox>{t("config.debug")}</Checkbox>
           </Form.Item>
         </Space>
 
         <Form.Item>
           <Button htmlType="submit" icon={<SaveOutlined />} loading={saving} type="primary">
-            保存配置
+            {isOnboarding ? t("config.saveOnboarding") : t("config.save")}
           </Button>
         </Form.Item>
       </Form>

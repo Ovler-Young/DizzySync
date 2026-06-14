@@ -2,6 +2,7 @@ import { EyeOutlined, ReloadOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Card, Image, Space, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useMemo } from "react";
+import { useI18n } from "../i18n.tsx";
 import type { DiscListItem } from "../types.ts";
 
 interface AlbumTableProps {
@@ -21,16 +22,17 @@ interface AlbumActionsProps {
 }
 
 function AlbumActions({ albumId, syncDisabled, onShow, onSync }: AlbumActionsProps) {
+  const { t } = useI18n();
   const showAlbum = useCallback(() => onShow(albumId), [albumId, onShow]);
   const syncAlbum = useCallback(() => onSync(albumId), [albumId, onSync]);
 
   return (
     <Space>
       <Button icon={<EyeOutlined />} onClick={showAlbum}>
-        详情
+        {t("album.detail")}
       </Button>
       <Button disabled={syncDisabled} icon={<SyncOutlined />} onClick={syncAlbum}>
-        同步
+        {t("album.sync")}
       </Button>
     </Space>
   );
@@ -44,10 +46,11 @@ export function AlbumTable({
   onShow,
   onSync,
 }: AlbumTableProps) {
+  const { t } = useI18n();
   const columns = useMemo<ColumnsType<DiscListItem>>(
     () => [
       {
-        title: "封面",
+        title: t("album.cover"),
         dataIndex: "cover",
         width: 72,
         render: (cover: string, album) =>
@@ -63,7 +66,7 @@ export function AlbumTable({
           ),
       },
       {
-        title: "标题",
+        title: t("album.name"),
         dataIndex: "title",
         sorter: (left, right) => left.title.localeCompare(right.title),
         render: (title: string, album) => (
@@ -74,12 +77,12 @@ export function AlbumTable({
         ),
       },
       {
-        title: "厂牌",
+        title: t("album.label"),
         dataIndex: "label",
         sorter: (left, right) => left.label.localeCompare(right.label),
       },
       {
-        title: "操作",
+        title: t("album.actions"),
         key: "actions",
         width: 190,
         render: (_, album) => (
@@ -92,15 +95,15 @@ export function AlbumTable({
         ),
       },
     ],
-    [onShow, onSync, syncDisabled],
+    [onShow, onSync, syncDisabled, t],
   );
 
   return (
     <Card
-      title="已购专辑"
+      title={t("album.title")}
       extra={
         <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>
-          重新加载
+          {t("album.reload")}
         </Button>
       }
     >

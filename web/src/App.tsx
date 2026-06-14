@@ -1,21 +1,39 @@
 import { KeyOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, App as AntApp, Button, Card, Input, Layout, Space, Tabs, Typography } from "antd";
+import {
+  Alert,
+  App as AntApp,
+  Button,
+  Card,
+  Input,
+  Layout,
+  Select,
+  Space,
+  Tabs,
+  Typography,
+} from "antd";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, apiKeyStorageKey } from "./api.ts";
+import { ApiError, api, apiKeyStorageKey } from "./api.ts";
 import { AlbumDetailDrawer } from "./components/AlbumDetailDrawer.tsx";
 import { AlbumTable } from "./components/AlbumTable.tsx";
 import { ConfigForm } from "./components/ConfigForm.tsx";
 import { ConfigGuide } from "./components/ConfigGuide.tsx";
 import { StatusCard } from "./components/StatusCard.tsx";
 import { SyncControls } from "./components/SyncControls.tsx";
+import { type Language, useI18n } from "./i18n.tsx";
 import type { ConfigResponse, DiscInfo, DiscListItem, StatusResponse } from "./types.ts";
 
 const { Header } = Layout;
 const { Title, Text } = Typography;
 
+const languageOptions: Array<{ label: string; value: Language }> = [
+  { label: "中文", value: "zh-CN" },
+  { label: "English", value: "en-US" },
+];
+
 export function App() {
   const { message } = AntApp.useApp();
+  const { language, setLanguage, t } = useI18n();
   const [apiKey, setApiKey] = useState(
     () => globalThis.localStorage.getItem(apiKeyStorageKey) ?? "",
   );
@@ -25,8 +43,10 @@ export function App() {
   const [detail, setDetail] = useState<DiscInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
 
   const isRunning = status?.job.state === "running";
+  const needsOnboarding = status && !authRequired ? !(status.configured && status.ready) : false;
 
   const saveApiKey = useCallback((value: string) => {
     setApiKey(value);
@@ -41,9 +61,22 @@ export function App() {
     setLoading(true);
     setError(null);
     try {
-      const [nextStatus, nextConfig] = await Promise.all([api.status(), api.config()]);
+      const nextStatus = await api.status();
       setStatus(nextStatus);
-      setConfig(nextConfig);
+      try {
+        const nextConfig = await api.config();
+        setConfig(nextConfig);
+        setAuthRequired(false);
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 401) {
+          setAuthRequired(true);
+          setConfig(null);
+          setAlbums([]);
+          setDetail(null);
+          return;
+        }
+        throw caught;
+      }
       if (nextStatus.ready) {
         setAlbums(await api.albums());
       } else {
@@ -134,11 +167,11 @@ export function App() {
         saveApiKey(nextApiKey);
       }
       setConfig(nextConfig);
-      loadStatus().catch((caught: unknown) => {
+      refreshAll().catch((caught: unknown) => {
         message.error(caught instanceof Error ? caught.message : String(caught));
       });
     },
-    [loadStatus, message, saveApiKey],
+    [message, refreshAll, saveApiKey],
   );
 
   const closeAlbumDetail = useCallback(() => {
@@ -152,11 +185,33 @@ export function App() {
     [saveApiKey],
   );
 
+  const onboarding = (
+    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <Alert
+        showIcon={true}
+        type="info"
+        message={t("onboarding.notReady")}
+        description={t("onboarding.notReadyDescription")}
+      />
+      <ConfigForm config={config} mode="onboarding" onSaved={handleConfigSaved} />
+      <ConfigGuide />
+    </Space>
+  );
+
   const tabItems = useMemo(
     () => [
+      ...(needsOnboarding
+        ? [
+            {
+              key: "onboarding",
+              label: t("tabs.onboarding"),
+              children: onboarding,
+            },
+          ]
+        : []),
       {
         key: "dashboard",
-        label: "控制台",
+        label: t("tabs.dashboard"),
         children: (
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <StatusCard status={status} />
@@ -167,14 +222,14 @@ export function App() {
               onRefresh={refreshAll}
               onShow={showAlbum}
               onSync={syncAlbum}
-              syncDisabled={isRunning}
+              syncDisabled={Boolean(isRunning)}
             />
           </Space>
         ),
       },
       {
         key: "settings",
-        label: "设置",
+        label: t("tabs.settings"),
         children: (
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <ConfigGuide />
@@ -186,32 +241,42 @@ export function App() {
     [
       albums,
       config,
-      isRunning,
       handleConfigSaved,
+      isRunning,
       loading,
+      needsOnboarding,
+      onboarding,
       refreshAll,
       showAlbum,
       status,
       syncAlbum,
       syncAll,
+      t,
     ],
   );
 
   return (
     <Layout>
       <Header style={{ alignItems: "center", display: "flex", justifyContent: "space-between" }}>
-        <div className="app-logo">DizzySync 控制台</div>
+        <div className="app-logo">{t("app.title")}</div>
         <Space>
+          <Select
+            aria-label={t("app.language")}
+            options={languageOptions}
+            style={{ width: 120 }}
+            value={language}
+            onChange={setLanguage}
+          />
           <Input.Password
             allowClear={true}
-            placeholder="API Key（如已启用）"
+            placeholder={t("app.apiKey.placeholder")}
             prefix={<KeyOutlined />}
             style={{ width: 280 }}
             value={apiKey}
             onChange={handleApiKeyChange}
           />
           <Button icon={<ReloadOutlined />} loading={loading} onClick={refreshAll}>
-            刷新
+            {t("app.refresh")}
           </Button>
         </Space>
       </Header>
@@ -219,17 +284,33 @@ export function App() {
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
           <div>
             <Title level={2} style={{ marginBottom: 4 }}>
-              音乐同步与配置管理
+              {needsOnboarding ? t("onboarding.title") : t("app.heading")}
             </Title>
             <Text type="secondary">
-              通过同一个 Rust 服务管理配置、查看专辑并触发同步。Docker 部署只暴露一个端口。
+              {needsOnboarding ? t("onboarding.welcome") : t("app.subtitle")}
             </Text>
           </div>
+          {authRequired ? (
+            <Alert
+              showIcon={true}
+              type="warning"
+              message={t("auth.required")}
+              description={t("auth.requiredDescription")}
+            />
+          ) : null}
           {error ? (
-            <Alert showIcon={true} type="error" message="请求失败" description={error} />
+            <Alert
+              showIcon={true}
+              type="error"
+              message={t("app.error.title")}
+              description={error}
+            />
           ) : null}
           <Card>
-            <Tabs items={tabItems} />
+            <Tabs
+              defaultActiveKey={needsOnboarding ? "onboarding" : "dashboard"}
+              items={tabItems}
+            />
           </Card>
         </Space>
       </main>

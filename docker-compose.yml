@@ -6,9 +6,9 @@ services:
     ports:
       - "${DIZZYSYNC_PORT:-8787}:8787"
     environment:
-      DIZZYSYNC_USERNAME: "${DIZZYSYNC_USERNAME:?Set DIZZYSYNC_USERNAME in .env}"
-      DIZZYSYNC_PASSWORD: "${DIZZYSYNC_PASSWORD:?Set DIZZYSYNC_PASSWORD in .env}"
-      DIZZYSYNC_API_KEY: "${DIZZYSYNC_API_KEY:-}"
+      # Only external configuration required by Docker: the password used to enter the Web UI.
+      # Configure Dizzylab credentials, formats, paths, and sync behavior in the Web UI onboarding flow.
+      DIZZYSYNC_WEB_PASSWORD: "${DIZZYSYNC_WEB_PASSWORD:?Set DIZZYSYNC_WEB_PASSWORD in .env}"
       DIZZYSYNC_OUTPUT_DIR: /data
     volumes:
       - dizzysync-config:/config

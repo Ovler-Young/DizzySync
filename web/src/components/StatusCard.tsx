@@ -1,4 +1,5 @@
 import { Alert, Card, Descriptions, Tag, Typography } from "antd";
+import { useI18n } from "../i18n.tsx";
 import type { StatusResponse } from "../types.ts";
 
 interface StatusCardProps {
@@ -6,31 +7,35 @@ interface StatusCardProps {
 }
 
 export function StatusCard({ status }: StatusCardProps) {
+  const { t } = useI18n();
+
   if (!status) {
-    return <Alert showIcon={true} type="info" message="正在读取服务状态..." />;
+    return <Alert showIcon={true} type="info" message={t("status.loading")} />;
   }
 
-  const job = status.job.state === "running" ? `${status.job.kind}` : "空闲";
+  const job = status.job.state === "running" ? `${status.job.kind}` : t("status.idle");
 
   return (
-    <Card title="服务状态">
+    <Card title={t("status.title")}>
       <Descriptions bordered={true} column={{ xs: 1, sm: 2, lg: 4 }} size="small">
-        <Descriptions.Item label="API 状态">
+        <Descriptions.Item label={t("status.api")}>
           <Tag color="green">{status.status}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="登录状态">
-          <Tag color={status.ready ? "green" : "orange"}>{status.ready ? "已就绪" : "未就绪"}</Tag>
+        <Descriptions.Item label={t("status.login")}>
+          <Tag color={status.ready ? "green" : "orange"}>
+            {status.ready ? t("status.ready") : t("status.notReady")}
+          </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="用户">
+        <Descriptions.Item label={t("status.user")}>
           {status.user ? `${status.user.username} (${status.user.uid})` : "-"}
         </Descriptions.Item>
-        <Descriptions.Item label="同步任务">
+        <Descriptions.Item label={t("status.syncJob")}>
           <Tag color={status.job.state === "running" ? "processing" : "default"}>{job}</Tag>
         </Descriptions.Item>
       </Descriptions>
       {status.last_error ? (
         <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-          最近错误：{status.last_error}
+          {t("status.lastError", { message: status.last_error })}
         </Typography.Paragraph>
       ) : null}
     </Card>
