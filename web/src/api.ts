@@ -5,6 +5,8 @@ import type {
   DiscListItem,
   LogEntry,
   StatusResponse,
+  TestLoginRequest,
+  TestLoginResponse,
   UpdateConfigRequest,
 } from "./types.ts";
 
@@ -62,6 +64,11 @@ export const api = {
   updateConfig: (body: UpdateConfigRequest) =>
     request<ConfigResponse>("/api/config", {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testLogin: (body: TestLoginRequest) =>
+    request<TestLoginResponse>("/api/config/test-login", {
+      method: "POST",
       body: JSON.stringify(body),
     }),
   albums: () => request<DiscListItem[]>("/api/albums"),
