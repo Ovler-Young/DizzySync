@@ -25,7 +25,7 @@ export interface ScheduleState {
 
 export interface LogEntry {
   timestamp: number;
-  level: "info" | "warn" | "error";
+  level: "trace" | "debug" | "info" | "warn" | "error";
   message: string;
 }
 

@@ -1,16 +1,24 @@
 import { ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Empty, List, Space, Tag, Typography } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { Alert, Button, Card, DatePicker, Empty, List, Select, Space, Tag, Typography } from "antd";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 import type { LogEntry } from "../types.ts";
 
 const { Text } = Typography;
+const { RangePicker } = DatePicker;
+
+interface PickerValue {
+  format: (template: string) => string;
+  toISOString: () => string;
+}
 
 const levelColor: Record<LogEntry["level"], string> = {
   error: "red",
   warn: "orange",
   info: "blue",
+  debug: "purple",
+  trace: "default",
 };
 
 function formatTime(timestamp: number) {
@@ -22,18 +30,31 @@ export function LogViewer() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [date, setDate] = useState<PickerValue | null>(null);
+  const [level, setLevel] = useState<string>();
+  const [range, setRange] = useState<[PickerValue | null, PickerValue | null] | null>(null);
+
+  const filters = useMemo(
+    () => ({
+      date: date?.format("YYYY-MM-DD"),
+      level,
+      start: range?.[0]?.toISOString(),
+      end: range?.[1]?.toISOString(),
+    }),
+    [date, level, range],
+  );
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setLogs(await api.logs());
+      setLogs(await api.logs(filters));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filters]);
 
   useEffect(() => {
     loadLogs();
@@ -50,6 +71,29 @@ export function LogViewer() {
     >
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <Alert showIcon={true} type="info" message={t("logs.description")} />
+        <Space wrap={true}>
+          <DatePicker allowClear={true} onChange={setDate} placeholder={t("logs.filterDate")} />
+          <Select
+            allowClear={true}
+            onChange={setLevel}
+            options={[
+              { label: "ERROR", value: "error" },
+              { label: "WARN", value: "warn" },
+              { label: "INFO", value: "info" },
+              { label: "DEBUG", value: "debug" },
+              { label: "TRACE", value: "trace" },
+            ]}
+            placeholder={t("logs.filterLevel")}
+            style={{ minWidth: 140 }}
+            value={level}
+          />
+          <RangePicker
+            allowClear={true}
+            onChange={(value) => setRange(value)}
+            placeholder={[t("logs.filterStart"), t("logs.filterEnd")]}
+            showTime={true}
+          />
+        </Space>
         {error ? <Alert showIcon={true} type="error" message={error} /> : null}
         {logs.length === 0 ? (
           <Empty description={t("logs.empty")} />

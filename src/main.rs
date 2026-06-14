@@ -14,7 +14,7 @@ use downloader::Downloader;
 use std::path::Path;
 use std::path::PathBuf;
 use tracing::{error, info};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -142,7 +142,11 @@ async fn main() -> Result<()> {
         EnvFilter::new("info")
     };
 
-    fmt().with_env_filter(env_filter).with_target(false).init();
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_target(false))
+        .with(api_control::web_log_layer())
+        .init();
 
     if matches.get_flag("debug") {
         info!("调试模式已启用，将显示所有HTTP响应");
