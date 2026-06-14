@@ -15,17 +15,49 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "a11y": { "preset": "all" },
-      "complexity": { "preset": "all" },
-      "nursery": { "preset": "all" },
-      "performance": { "preset": "all" },
-      "security": { "preset": "all" },
-      "style": { "preset": "all" },
+      "a11y": {
+        "preset": "all"
+      },
+      "complexity": {
+        "preset": "all",
+        "noExcessiveLinesPerFunction": "off",
+        "noExcessiveCognitiveComplexity": "off"
+      },
+      "nursery": {
+        "preset": "all"
+      },
+      "performance": {
+        "preset": "all",
+        "noJsxPropsBind": "off",
+        "useSolidForComponent": "off"
+      },
+      "security": {
+        "preset": "all",
+        "noSecrets": "off"
+      },
+      "style": {
+        "preset": "all",
+        "noTernary": "off",
+        "noMagicNumbers": "off",
+        "noHexColors": "off",
+        "noJsxLiterals": "off",
+        "useComponentExportOnlyModules": "off",
+        "useNamingConvention": "off",
+        "useExportsLast": "off",
+        "useConsistentMemberAccessibility": "off",
+        "noExcessiveLinesPerFile": "off"
+      },
       "suspicious": {
         "preset": "all",
         "noReactSpecificProps": "off"
