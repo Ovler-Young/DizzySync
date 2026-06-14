@@ -97,6 +97,7 @@ const translations: Record<Language, TranslationMap> = {
     "config.directoryTemplate": "目录模板",
     "config.directoryTemplateRequired": "请输入目录模板",
     "config.template.default": "推荐：专辑名 / @厂牌名",
+    "config.template.flat": "平铺：专辑名",
     "config.template.labelAlbum": "按厂牌归档：@厂牌名 / 专辑名",
     "config.template.yearAlbum": "按年份归档：年份 / 专辑名",
     "config.template.artistAlbum": "按作者归档：作者 / 专辑名",
@@ -122,9 +123,6 @@ const translations: Record<Language, TranslationMap> = {
     "logs.refresh": "刷新日志",
     "logs.empty": "暂无日志",
     "guide.title": "配置指南",
-    "guide.credentials.title": "凭据保存位置",
-    "guide.credentials.description":
-      "Dizzylab 凭据和同步配置保存在服务端 config.toml 中；Docker Compose 默认将该文件放在 dizzysync_config 卷中。Docker 环境变量只需要提供 Web UI 密码。",
     "guide.user.label": "登录凭据 [[users]]",
     "guide.user.body":
       "可配置一个或多个 Dizzylab 账号。username 和 password 是登录凭据；首次设置和后续修改均在 Web UI 中完成。保存时会逐个登录 Dizzylab 验证，全部成功后才写入配置。旧版 [user] 配置仍会被兼容读取。",
@@ -132,7 +130,7 @@ const translations: Record<Language, TranslationMap> = {
     "guide.download.conflict": "128 和 320 都会输出 .mp3 文件，不能同时选择，否则文件名会冲突。",
     "guide.paths.label": "路径与目录模板 [paths]",
     "guide.paths.body":
-      "output_dir 是下载输出目录；设置 DIZZYSYNC_OUTPUT_DIR 后会自动写入并锁定，Web UI 不允许修改。directory_template 支持变量：{album}、{label}、{authors}、{year}、{date}；建议优先使用预设模板，避免文件名冲突。",
+      "output_dir 是下载输出目录；设置 DIZZYSYNC_OUTPUT_DIR 后会自动写入并锁定，Web UI 不允许修改。directory_template 支持变量：{album}、{label}、{authors}、{year}、{date}；选择“平铺”预设可直接保存到输出目录下的专辑文件夹中。",
     "guide.behavior.label": "同步行为 [behavior]",
     "guide.behavior.skipExisting": "skip_existing：跳过已存在目录。",
     "guide.behavior.singleThreaded": "single_threaded：单线程下载，减轻服务器压力。",
@@ -236,6 +234,7 @@ const translations: Record<Language, TranslationMap> = {
     "config.directoryTemplate": "Directory template",
     "config.directoryTemplateRequired": "Enter the directory template",
     "config.template.default": "Recommended: album / @label",
+    "config.template.flat": "Flat: album",
     "config.template.labelAlbum": "Group by label: @label / album",
     "config.template.yearAlbum": "Group by year: year / album",
     "config.template.artistAlbum": "Group by artist: artist / album",
@@ -262,9 +261,6 @@ const translations: Record<Language, TranslationMap> = {
     "logs.refresh": "Refresh logs",
     "logs.empty": "No logs yet",
     "guide.title": "Configuration guide",
-    "guide.credentials.title": "Where credentials are stored",
-    "guide.credentials.description":
-      "Dizzylab credentials and sync settings are stored in the server-side config.toml. Docker Compose stores it in the dizzysync_config volume by default. Docker only needs the Web UI password as an environment variable.",
     "guide.user.label": "Login credentials [[users]]",
     "guide.user.body":
       "Configure one or more Dizzylab accounts. username and password are the login credentials. Initial setup and future changes happen in the Web UI. Saving validates every account against Dizzylab before writing config. Legacy [user] config is still read for compatibility.",
@@ -273,7 +269,7 @@ const translations: Record<Language, TranslationMap> = {
       "128 and 320 both output .mp3 files and cannot be selected together.",
     "guide.paths.label": "Paths and directory template [paths]",
     "guide.paths.body":
-      "output_dir is the download directory. When DIZZYSYNC_OUTPUT_DIR is set it is written automatically and locked in the Web UI. directory_template supports {album}, {label}, {authors}, {year}, and {date}; prefer the presets to avoid filename conflicts.",
+      "output_dir is the download directory. When DIZZYSYNC_OUTPUT_DIR is set it is written automatically and locked in the Web UI. directory_template supports {album}, {label}, {authors}, {year}, and {date}; choose the flat preset to save albums directly under the output directory.",
     "guide.behavior.label": "Sync behavior [behavior]",
     "guide.behavior.skipExisting": "skip_existing: skip directories that already exist.",
     "guide.behavior.singleThreaded":

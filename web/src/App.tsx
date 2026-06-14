@@ -1,13 +1,13 @@
-import { LoginOutlined, ReloadOutlined } from "@ant-design/icons";
+import { LoginOutlined, TranslationOutlined } from "@ant-design/icons";
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   Layout,
-  Select,
   Space,
   Tabs,
   Typography,
@@ -17,7 +17,7 @@ import { ApiError, api, apiKeyStorageKey } from "./api.ts";
 import { AlbumDetailDrawer } from "./components/AlbumDetailDrawer.tsx";
 import { AlbumTable } from "./components/AlbumTable.tsx";
 import { ConfigForm } from "./components/ConfigForm.tsx";
-import { ConfigGuide } from "./components/ConfigGuide.tsx";
+import { ConfigGuide, type ConfigGuideSection } from "./components/ConfigGuide.tsx";
 import { LogViewer } from "./components/LogViewer.tsx";
 import { StatusCard } from "./components/StatusCard.tsx";
 import { SyncControls } from "./components/SyncControls.tsx";
@@ -49,6 +49,7 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
+  const [activeGuideKey, setActiveGuideKey] = useState<ConfigGuideSection>("user");
 
   const isRunning = status?.job.state === "running";
   const needsOnboarding = status && !authRequired ? !(status.configured && status.ready) : false;
@@ -191,6 +192,30 @@ export function App() {
     setDetail(null);
   }, []);
 
+  const languageMenuItems = useMemo(
+    () =>
+      languageOptions.map((option) => ({
+        key: option.value,
+        label: option.label,
+      })),
+    [],
+  );
+
+  const languageButton = (className?: string) => (
+    <Dropdown
+      menu={{
+        items: languageMenuItems,
+        selectedKeys: [language],
+        onClick: ({ key }) => setLanguage(key as Language),
+      }}
+      trigger={["click"]}
+    >
+      <Button aria-label={t("app.language")} className={className} icon={<TranslationOutlined />}>
+        {t("app.language")}
+      </Button>
+    </Dropdown>
+  );
+
   const onboarding = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       <Alert
@@ -200,8 +225,13 @@ export function App() {
         description={t("onboarding.notReadyDescription")}
       />
       <div className="settings-grid">
-        <ConfigForm config={config} mode="onboarding" onSaved={handleConfigSaved} />
-        <ConfigGuide />
+        <ConfigForm
+          config={config}
+          mode="onboarding"
+          onFocusGuide={setActiveGuideKey}
+          onSaved={handleConfigSaved}
+        />
+        <ConfigGuide activeKey={activeGuideKey} onActiveKeyChange={setActiveGuideKey} />
       </div>
     </Space>
   );
@@ -245,13 +275,18 @@ export function App() {
         label: t("tabs.settings"),
         children: (
           <div className="settings-grid">
-            <ConfigForm config={config} onSaved={handleConfigSaved} />
-            <ConfigGuide />
+            <ConfigForm
+              config={config}
+              onFocusGuide={setActiveGuideKey}
+              onSaved={handleConfigSaved}
+            />
+            <ConfigGuide activeKey={activeGuideKey} onActiveKeyChange={setActiveGuideKey} />
           </div>
         ),
       },
     ],
     [
+      activeGuideKey,
       albums,
       config,
       handleConfigSaved,
@@ -271,15 +306,7 @@ export function App() {
   if (authRequired) {
     return (
       <Layout className="auth-layout">
-        <div className="auth-language">
-          <Select
-            aria-label={t("app.language")}
-            options={languageOptions}
-            style={{ width: 120 }}
-            value={language}
-            onChange={setLanguage}
-          />
-        </div>
+        <div className="auth-language">{languageButton()}</div>
         <Card className="login-card">
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <div>
@@ -315,18 +342,7 @@ export function App() {
     <Layout>
       <Header className="app-header">
         <div className="app-logo">{t("app.title")}</div>
-        <Space>
-          <Select
-            aria-label={t("app.language")}
-            options={languageOptions}
-            style={{ width: 120 }}
-            value={language}
-            onChange={setLanguage}
-          />
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={refreshAll}>
-            {t("app.refresh")}
-          </Button>
-        </Space>
+        <Space>{languageButton()}</Space>
       </Header>
       <main className="page-content">
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
