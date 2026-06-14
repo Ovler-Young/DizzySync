@@ -122,6 +122,10 @@ const translations: Record<Language, TranslationMap> = {
     "logs.description": "显示 Web API 和同步任务的最近运行日志，便于排查登录、配置和下载问题。",
     "logs.refresh": "刷新日志",
     "logs.empty": "暂无日志",
+    "logs.filterDate": "按日期筛选",
+    "logs.filterLevel": "按级别筛选",
+    "logs.filterStart": "开始时间",
+    "logs.filterEnd": "结束时间",
     "guide.title": "配置指南",
     "guide.user.label": "登录凭据 [[users]]",
     "guide.user.body":
@@ -260,6 +264,10 @@ const translations: Record<Language, TranslationMap> = {
       "Shows recent Web API and sync job logs for troubleshooting login, configuration, and downloads.",
     "logs.refresh": "Refresh logs",
     "logs.empty": "No logs yet",
+    "logs.filterDate": "Filter by date",
+    "logs.filterLevel": "Filter by level",
+    "logs.filterStart": "Start time",
+    "logs.filterEnd": "End time",
     "guide.title": "Configuration guide",
     "guide.user.label": "Login credentials [[users]]",
     "guide.user.body":
