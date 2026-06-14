@@ -1,4 +1,4 @@
-import { SyncOutlined } from "@ant-design/icons";
+import { ExportOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Tooltip, Typography } from "antd";
 import { useCallback } from "react";
 import { useI18n } from "../i18n.tsx";
@@ -10,19 +10,25 @@ interface AlbumDetailDrawerProps {
   onSync: (id: string) => void;
 }
 
-interface SyncAlbumButtonProps {
+interface AlbumActionsProps {
   albumId: string;
   onSync: (id: string) => void;
 }
 
-function SyncAlbumButton({ albumId, onSync }: SyncAlbumButtonProps) {
+function AlbumActions({ albumId, onSync }: AlbumActionsProps) {
   const { t } = useI18n();
   const syncAlbum = useCallback(() => onSync(albumId), [albumId, onSync]);
+  const albumUrl = `https://www.dizzylab.net/d/${albumId}/`;
 
   return (
-    <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
-      {t("detail.sync")}
-    </Button>
+    <Space>
+      <Button href={albumUrl} icon={<ExportOutlined />} rel="noopener noreferrer" target="_blank">
+        {t("detail.openInDizzylab")}
+      </Button>
+      <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
+        {t("detail.sync")}
+      </Button>
+    </Space>
   );
 }
 
@@ -54,7 +60,7 @@ export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerP
   return (
     <Drawer
       destroyOnHidden={true}
-      extra={album ? <SyncAlbumButton albumId={album.id} onSync={onSync} /> : null}
+      extra={album ? <AlbumActions albumId={album.id} onSync={onSync} /> : null}
       open={Boolean(album)}
       title={album?.title ?? t("detail.title")}
       width={720}
