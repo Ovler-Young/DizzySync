@@ -1,7 +1,9 @@
 import {
   ApiOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   CloudSyncOutlined,
+  ExclamationCircleOutlined,
   LoginOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -19,6 +21,13 @@ interface StatusMetricProps {
   label: string;
   value: ReactNode;
   meta?: ReactNode;
+  tone?: "green" | "blue" | "orange" | "default";
+}
+
+interface StatusChipProps {
+  icon?: ReactNode;
+  label: string;
+  value: ReactNode;
   tone?: "green" | "blue" | "orange" | "default";
 }
 
@@ -43,6 +52,16 @@ function StatusMetric({ icon, label, value, meta, tone = "default" }: StatusMetr
         <div className="status-metric-value">{value}</div>
         {meta ? <div className="status-metric-meta">{meta}</div> : null}
       </div>
+    </div>
+  );
+}
+
+function StatusChip({ icon, label, value, tone = "default" }: StatusChipProps) {
+  return (
+    <div className={`status-chip status-chip-${tone}`}>
+      {icon ? <span className="status-chip-icon">{icon}</span> : null}
+      <span className="status-chip-label">{label}</span>
+      <span className="status-chip-value">{value}</span>
     </div>
   );
 }
@@ -93,21 +112,50 @@ export function StatusCard({ status }: StatusCardProps) {
     return new Date(timestamp * 1000).toLocaleString();
   };
 
+  const heroTone = status.ready ? "ready" : "attention";
+  const heroIcon = status.ready ? <CheckCircleOutlined /> : <ExclamationCircleOutlined />;
+  const heroTitle = status.ready ? t("status.heroReadyTitle") : t("status.heroNotReadyTitle");
+  const heroDescription = status.ready
+    ? t("status.heroReadyDescription")
+    : t(status.requires_auth ? "status.heroAuthDescription" : "status.heroSetupDescription");
+  const jobMeta =
+    status.job.state === "running"
+      ? `${t("status.startedAt")}: ${formatTime(status.job.started_at)}`
+      : t("status.noActiveJob");
+
   return (
     <Card className="status-card" title={t("status.title")}>
+      <div className={`status-hero status-hero-${heroTone}`}>
+        <div className="status-hero-icon">{heroIcon}</div>
+        <div className="status-hero-content">
+          <Typography.Title className="status-hero-title" level={4}>
+            {heroTitle}
+          </Typography.Title>
+          <Typography.Text className="status-hero-description">{heroDescription}</Typography.Text>
+          <div className="status-hero-chips">
+            <StatusChip
+              icon={<ApiOutlined />}
+              label={t("status.api")}
+              tone="green"
+              value={<Tag color="green">{status.status}</Tag>}
+            />
+            <StatusChip
+              icon={<LoginOutlined />}
+              label={t("status.login")}
+              tone={loginTone}
+              value={<Tag color={loginColor}>{loginText}</Tag>}
+            />
+            <StatusChip
+              icon={<CloudSyncOutlined />}
+              label={t("status.syncJob")}
+              tone={status.job.state === "running" ? "blue" : "default"}
+              value={<Tag color={jobColor}>{job}</Tag>}
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="status-metric-grid">
-        <StatusMetric
-          icon={<ApiOutlined />}
-          label={t("status.api")}
-          tone="green"
-          value={<Tag color="green">{status.status}</Tag>}
-        />
-        <StatusMetric
-          icon={<LoginOutlined />}
-          label={t("status.login")}
-          tone={loginTone}
-          value={<Tag color={loginColor}>{loginText}</Tag>}
-        />
         <StatusMetric
           icon={<UserOutlined />}
           label={t("status.user")}
@@ -117,6 +165,7 @@ export function StatusCard({ status }: StatusCardProps) {
         <StatusMetric
           icon={<CloudSyncOutlined />}
           label={t("status.syncJob")}
+          meta={jobMeta}
           tone={status.job.state === "running" ? "blue" : "default"}
           value={<Tag color={jobColor}>{job}</Tag>}
         />
@@ -134,6 +183,31 @@ export function StatusCard({ status }: StatusCardProps) {
           value={formatTime(status.schedule.next_run)}
         />
       </div>
+
+      <div className="status-detail-panel">
+        <div className="status-detail-header">{t("status.accountSecurity")}</div>
+        <div className="status-detail-content">
+          <StatusChip
+            label={t("status.accounts")}
+            tone={users.length > 0 ? "green" : "orange"}
+            value={accountText}
+          />
+          <StatusChip
+            label={t("status.credentials")}
+            tone={status.ready ? "green" : "orange"}
+            value={status.ready ? t("status.credentialsVerified") : t("status.credentialsRedacted")}
+          />
+          <StatusChip
+            label={t("status.configuration")}
+            tone={status.configured ? "green" : "orange"}
+            value={status.configured ? t("status.configured") : t("status.notConfigured")}
+          />
+        </div>
+        <Typography.Text className="status-detail-note" type="secondary">
+          {users.length > 0 ? userText : t("status.noAccounts")}
+        </Typography.Text>
+      </div>
+
       {status.schedule.last_error ? (
         <Alert
           className="status-alert"
