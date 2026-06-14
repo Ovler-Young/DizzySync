@@ -390,7 +390,7 @@ async fn status(State(state): State<ApiState>, headers: HeaderMap) -> Json<Statu
         if authenticated {
             schedule.clone()
         } else {
-            redacted_schedule_state(&*schedule)
+            redacted_schedule_state(&schedule)
         }
     };
 

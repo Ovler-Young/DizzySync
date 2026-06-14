@@ -316,7 +316,7 @@ fn count_audio_files(dir: &Path) -> usize {
                 .path()
                 .extension()
                 .and_then(|ext| ext.to_str())
-                .map(|ext| is_supported_audio_extension(ext))
+                .map(is_supported_audio_extension)
                 .unwrap_or(false)
         })
         .count()
