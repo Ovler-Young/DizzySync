@@ -37,12 +37,6 @@ export function App() {
     }
   }, []);
 
-  const loadStatus = useCallback(async () => {
-    const nextStatus = await api.status();
-    setStatus(nextStatus);
-    return nextStatus;
-  }, []);
-
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -52,6 +46,9 @@ export function App() {
       setConfig(nextConfig);
       if (nextStatus.ready) {
         setAlbums(await api.albums());
+      } else {
+        setAlbums([]);
+        setDetail(null);
       }
     } catch (caught) {
       const text = caught instanceof Error ? caught.message : String(caught);
@@ -60,6 +57,19 @@ export function App() {
       setLoading(false);
     }
   }, []);
+
+  const loadStatus = useCallback(async () => {
+    const nextStatus = await api.status();
+    setStatus((previousStatus) => {
+      if (previousStatus?.job.state === "running" && nextStatus.job.state === "idle") {
+        refreshAll().catch((caught: unknown) => {
+          setError(caught instanceof Error ? caught.message : String(caught));
+        });
+      }
+      return nextStatus;
+    });
+    return nextStatus;
+  }, [refreshAll]);
 
   useEffect(() => {
     refreshAll().catch((caught: unknown) => {
@@ -119,13 +129,16 @@ export function App() {
   );
 
   const handleConfigSaved = useCallback(
-    (nextConfig: ConfigResponse) => {
+    (nextConfig: ConfigResponse, nextApiKey?: string) => {
+      if (nextApiKey !== undefined) {
+        saveApiKey(nextApiKey);
+      }
       setConfig(nextConfig);
       loadStatus().catch((caught: unknown) => {
         message.error(caught instanceof Error ? caught.message : String(caught));
       });
     },
-    [loadStatus, message],
+    [loadStatus, message, saveApiKey],
   );
 
   const closeAlbumDetail = useCallback(() => {

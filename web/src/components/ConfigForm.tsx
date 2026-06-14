@@ -17,7 +17,7 @@ import type { ConfigResponse, UpdateConfigRequest } from "../types.ts";
 
 interface ConfigFormProps {
   config: ConfigResponse | null;
-  onSaved: (config: ConfigResponse) => void;
+  onSaved: (config: ConfigResponse, apiKey?: string) => void;
 }
 
 interface ConfigFormValues {
@@ -115,7 +115,7 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
         message.success("配置已保存到 TOML");
         form.setFieldValue("password", "");
         form.setFieldValue("apiKey", "");
-        onSaved(nextConfig);
+        onSaved(nextConfig, apiKey || undefined);
       } catch (caught) {
         message.error(caught instanceof Error ? caught.message : String(caught));
       } finally {
@@ -174,7 +174,11 @@ export function ConfigForm({ config, onSaved }: ConfigFormProps) {
           >
             <Input style={{ width: 320 }} />
           </Form.Item>
-          <Form.Item label="最大并发专辑数" name="maxConcurrentAlbums">
+          <Form.Item
+            label="最大并发专辑数"
+            name="maxConcurrentAlbums"
+            rules={[{ required: true, type: "number", min: 1, message: "请输入不小于 1 的并发数" }]}
+          >
             <InputNumber min={1} style={{ width: 180 }} />
           </Form.Item>
         </Space>
