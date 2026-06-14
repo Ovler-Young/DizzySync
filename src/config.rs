@@ -12,6 +12,8 @@ pub struct Config {
     pub paths: PathsConfig,
     pub behavior: BehaviorConfig,
     #[serde(default)]
+    pub schedule: ScheduleConfig,
+    #[serde(default)]
     pub api: ApiConfig,
 }
 
@@ -46,6 +48,23 @@ pub struct BehaviorConfig {
     pub debug: bool,
     #[serde(default = "default_false")]
     pub metadata_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduleConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    #[serde(default = "default_cron_expression")]
+    pub cron: String,
+}
+
+impl Default for ScheduleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cron: default_cron_expression(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +103,10 @@ fn default_api_bind() -> String {
     "127.0.0.1:8787".to_string()
 }
 
+fn default_cron_expression() -> String {
+    "0 0 3 * * * *".to_string()
+}
+
 fn default_web_root() -> PathBuf {
     PathBuf::from("./web/dist")
 }
@@ -112,6 +135,7 @@ impl Default for Config {
                 debug: false,
                 metadata_only: false,
             },
+            schedule: ScheduleConfig::default(),
             api: ApiConfig::default(),
         }
     }

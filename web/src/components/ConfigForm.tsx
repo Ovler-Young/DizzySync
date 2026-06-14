@@ -41,6 +41,8 @@ interface ConfigFormValues {
   generateNfo: boolean;
   debug: boolean;
   metadataOnly: boolean;
+  scheduleEnabled: boolean;
+  scheduleCron: string;
   apiKey?: string;
 }
 
@@ -95,6 +97,8 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       generateNfo: config.config.behavior.generate_nfo,
       debug: config.config.behavior.debug,
       metadataOnly: config.config.behavior.metadata_only,
+      scheduleEnabled: config.config.schedule.enabled,
+      scheduleCron: config.config.schedule.cron,
       apiKey: "",
     };
   }, [config]);
@@ -134,6 +138,10 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           generate_nfo: values.generateNfo,
           debug: values.debug,
           metadata_only: values.metadataOnly,
+        },
+        schedule: {
+          enabled: values.scheduleEnabled,
+          cron: values.scheduleCron.trim(),
         },
         api: apiKey ? { api_key: apiKey } : undefined,
       };
@@ -303,6 +311,20 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
           </Form.Item>
           <Form.Item name="debug" valuePropName="checked">
             <Checkbox>{t("config.debug")}</Checkbox>
+          </Form.Item>
+        </Space>
+
+        <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
+          <Form.Item name="scheduleEnabled" valuePropName="checked">
+            <Checkbox>{t("config.scheduleEnabled")}</Checkbox>
+          </Form.Item>
+          <Form.Item
+            label={t("config.scheduleCron")}
+            name="scheduleCron"
+            rules={[{ required: true, message: t("config.scheduleCronRequired") }]}
+            tooltip={t("config.scheduleCronHelp")}
+          >
+            <Input placeholder="0 0 3 * * * *" style={{ width: 320 }} />
           </Form.Item>
         </Space>
 

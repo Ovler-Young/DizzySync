@@ -44,6 +44,31 @@ export function StatusCard({ status }: StatusCardProps) {
     userText = users.map((user) => `${user.username} (${user.uid})`).join(", ");
   }
 
+  let scheduleColor = "default";
+  let scheduleText = t("status.scheduleDisabled");
+  let scheduleCron = "-";
+  if (status.schedule.enabled) {
+    scheduleColor = "blue";
+    scheduleText = t("status.scheduleEnabled");
+    scheduleCron = status.schedule.cron;
+  }
+
+  const formatTime = (timestamp: number | null) => {
+    if (!timestamp) {
+      return "-";
+    }
+    return new Date(timestamp * 1000).toLocaleString();
+  };
+
+  let scheduleError: ReactNode = null;
+  if (status.schedule.last_error) {
+    scheduleError = (
+      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
+        {t("status.scheduleLastError", { message: status.schedule.last_error })}
+      </Typography.Paragraph>
+    );
+  }
+
   let lastError: ReactNode = null;
   if (status.last_error) {
     lastError = (
@@ -66,7 +91,18 @@ export function StatusCard({ status }: StatusCardProps) {
         <Descriptions.Item label={t("status.syncJob")}>
           <Tag color={jobColor}>{job}</Tag>
         </Descriptions.Item>
+        <Descriptions.Item label={t("status.schedule")}>
+          <Tag color={scheduleColor}>{scheduleText}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label={t("status.scheduleCron")}>{scheduleCron}</Descriptions.Item>
+        <Descriptions.Item label={t("status.nextRun")}>
+          {formatTime(status.schedule.next_run)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("status.lastRun")}>
+          {formatTime(status.schedule.last_run)}
+        </Descriptions.Item>
       </Descriptions>
+      {scheduleError}
       {lastError}
     </Card>
   );

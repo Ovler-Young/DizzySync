@@ -50,6 +50,7 @@ tower-http = { version = "0.6.11", features = ["fs"] }
 
 # 日期时间处理
 chrono = { version = "0.4", features = ["serde"] }
+cron = "0.15"
 
 # MD5 校验（封面去重）
 md5 = "0.8"
