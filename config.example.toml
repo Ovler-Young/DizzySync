@@ -1,10 +1,19 @@
 # DizzySync 配置文件示例
 # 复制此文件为 config.toml 并修改相应配置
 
-[user]
-# 你的 Dizzylab 账号
+# 单账号旧格式仍兼容：
+# [user]
+# username = "your_username_here"
+# password = "your_password_here"
+
+# 推荐使用多账号格式。可添加多个 [[users]] 块，DizzySync 会逐个登录并同步。
+[[users]]
 username = "your_username_here"
 password = "your_password_here"
+
+# [[users]]
+# username = "another_username_here"
+# password = "another_password_here"
 
 [download]
 # 要下载的格式，可选值：["128", "320", "FLAC", "gift"]

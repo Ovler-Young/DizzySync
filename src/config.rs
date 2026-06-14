@@ -4,7 +4,10 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
     pub user: UserConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub users: Vec<UserConfig>,
     pub download: DownloadConfig,
     pub paths: PathsConfig,
     pub behavior: BehaviorConfig,
@@ -12,7 +15,7 @@ pub struct Config {
     pub api: ApiConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserConfig {
     pub username: String,
     pub password: String,
@@ -92,6 +95,7 @@ impl Default for Config {
                 username: String::new(),
                 password: String::new(),
             },
+            users: Vec::new(),
             download: DownloadConfig {
                 formats: vec!["320".to_string(), "FLAC".to_string()],
             },
@@ -147,6 +151,17 @@ impl Config {
         );
         apply_string_env(&mut self.api.api_key, "DIZZYSYNC_API_KEY", fill_empty_only);
 
+        apply_string_env(
+            &mut self.user.username,
+            "DIZZYSYNC_USERNAME",
+            fill_empty_only,
+        );
+        apply_string_env(
+            &mut self.user.password,
+            "DIZZYSYNC_PASSWORD",
+            fill_empty_only,
+        );
+
         if let Ok(output_dir) = std::env::var("DIZZYSYNC_OUTPUT_DIR") {
             // The deployment-provided output directory is authoritative so the Web UI
             // cannot drift away from mounted storage such as Docker's /data volume.
@@ -154,6 +169,23 @@ impl Config {
         }
 
         self.behavior.max_concurrent_albums = self.behavior.max_concurrent_albums.max(1);
+    }
+
+    pub fn accounts(&self) -> Vec<UserConfig> {
+        if self.users.is_empty() {
+            if self.user.username.trim().is_empty() && self.user.password.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![self.user.clone()]
+            }
+        } else {
+            self.users.clone()
+        }
+    }
+
+    pub fn set_accounts(&mut self, users: Vec<UserConfig>) {
+        self.users = users;
+        self.user = self.users.first().cloned().unwrap_or_default();
     }
 
     pub fn load_or_bootstrap(path: &str) -> Result<Self> {
