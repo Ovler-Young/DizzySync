@@ -24,7 +24,7 @@ import { SyncControls } from "./components/SyncControls.tsx";
 import { type Language, useI18n } from "./i18n.tsx";
 import type { ConfigResponse, DiscInfo, DiscListItem, StatusResponse } from "./types.ts";
 
-const { Header } = Layout;
+const { Footer, Header } = Layout;
 const { Title, Text } = Typography;
 
 const languageOptions: Array<{ label: string; value: Language }> = [
@@ -370,6 +370,20 @@ export function App() {
           </Card>
         </Space>
       </main>
+      <Footer className="app-footer">
+        <Space direction="vertical" size={4}>
+          <Text type="secondary">{t("footer.disclaimer")}</Text>
+          <Space split={<Text type="secondary">·</Text>} wrap={true}>
+            <Typography.Link href="https://github.com/Ovler-Young/DizzySync" target="_blank">
+              {t("footer.source")}
+            </Typography.Link>
+            <Typography.Link href="https://www.dizzylab.net" target="_blank">
+              {t("footer.dizzylab")}
+            </Typography.Link>
+            <Text type="secondary">{t("footer.credit")}</Text>
+          </Space>
+        </Space>
+      </Footer>
       <AlbumDetailDrawer album={detail} onClose={closeAlbumDetail} onSync={syncAlbum} />
     </Layout>
   );

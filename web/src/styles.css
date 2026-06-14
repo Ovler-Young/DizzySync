@@ -50,9 +50,11 @@ body {
 }
 
 .page-content {
+  box-sizing: border-box;
   margin: 24px auto;
-  max-width: 1440px;
-  padding: 0 24px 32px;
+  max-width: none;
+  padding: 0 clamp(16px, 4vw, 64px) 32px;
+  width: 100%;
 }
 
 .cover-thumb {
@@ -84,6 +86,14 @@ body {
   color: rgba(0, 0, 0, 0.45);
 }
 
+.status-descriptions {
+  overflow-x: auto;
+}
+
+.status-descriptions .ant-descriptions-view {
+  min-width: 720px;
+}
+
 .status-descriptions .ant-descriptions-item-label,
 .status-descriptions .ant-descriptions-item-content,
 .status-descriptions .ant-tag {
@@ -96,4 +106,26 @@ body {
 
 .guide-section-active > .ant-collapse-content {
   border-left: 3px solid #1677ff;
+}
+
+.config-guide-card {
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+  position: sticky;
+  top: 88px;
+}
+
+.track-media audio {
+  max-width: 100%;
+  width: min(420px, 100%);
+}
+
+.app-footer {
+  background: transparent;
+  padding: 0 clamp(16px, 4vw, 64px) 32px;
+  text-align: center;
+}
+
+.app-footer a {
+  white-space: nowrap;
 }

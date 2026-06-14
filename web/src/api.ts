@@ -12,6 +12,15 @@ import type {
 
 export const apiKeyStorageKey = "dizzysync.apiKey";
 
+export function localFileUrl(path: string): string {
+  const params = new URLSearchParams({ path });
+  const apiKey = localStorage.getItem(apiKeyStorageKey)?.trim();
+  if (apiKey) {
+    params.set("api_key", apiKey);
+  }
+  return `/api/local-file?${params.toString()}`;
+}
+
 export class ApiError extends Error {
   public readonly status: number;
 
