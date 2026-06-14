@@ -54,6 +54,15 @@ export interface DiscListItem {
   label: string;
   cover: string;
   labelid?: unknown;
+  release_date?: string | null;
+  price?: unknown;
+  hasgift?: boolean;
+  ispreselling?: boolean;
+  onsell?: boolean;
+  onlyhavegift?: boolean;
+  tags?: string[];
+  track_count?: number;
+  formats?: string[];
   local?: LocalAlbumState;
 }
 

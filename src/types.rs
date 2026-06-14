@@ -35,6 +35,24 @@ pub struct DiscListItem {
     pub cover: String,
     #[serde(default)]
     pub labelid: Option<serde_json::Value>,
+    #[serde(default)]
+    pub release_date: Option<String>,
+    #[serde(default)]
+    pub price: Option<serde_json::Value>,
+    #[serde(default)]
+    pub hasgift: bool,
+    #[serde(default)]
+    pub ispreselling: bool,
+    #[serde(default)]
+    pub onsell: bool,
+    #[serde(default)]
+    pub onlyhavegift: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub track_count: Option<usize>,
+    #[serde(default)]
+    pub formats: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local: Option<LocalAlbumState>,
 }

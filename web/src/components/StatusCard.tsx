@@ -1,10 +1,25 @@
-import { Alert, Card, Descriptions, Tag, Typography } from "antd";
+import {
+  ApiOutlined,
+  ClockCircleOutlined,
+  CloudSyncOutlined,
+  LoginOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import { Alert, Card, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useI18n } from "../i18n.tsx";
 import type { StatusResponse, UserInfo } from "../types.ts";
 
 interface StatusCardProps {
   status: StatusResponse | null;
+}
+
+interface StatusMetricProps {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  meta?: ReactNode;
+  tone?: "green" | "blue" | "orange" | "default";
 }
 
 function resolveUsers(status: StatusResponse): UserInfo[] {
@@ -15,6 +30,21 @@ function resolveUsers(status: StatusResponse): UserInfo[] {
     return [status.user];
   }
   return [];
+}
+
+function StatusMetric({ icon, label, value, meta, tone = "default" }: StatusMetricProps) {
+  return (
+    <div className={`status-metric status-metric-${tone}`}>
+      <div className="status-metric-icon">{icon}</div>
+      <div className="status-metric-body">
+        <Typography.Text className="status-metric-label" type="secondary">
+          {label}
+        </Typography.Text>
+        <div className="status-metric-value">{value}</div>
+        {meta ? <div className="status-metric-meta">{meta}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 export function StatusCard({ status }: StatusCardProps) {
@@ -33,24 +63,27 @@ export function StatusCard({ status }: StatusCardProps) {
 
   let loginColor = "orange";
   let loginText = t("status.notReady");
+  let loginTone: StatusMetricProps["tone"] = "orange";
   if (status.ready) {
     loginColor = "green";
     loginText = t("status.ready");
+    loginTone = "green";
   }
 
   const users = resolveUsers(status);
-  let userText = "-";
-  if (users.length > 0) {
-    userText = users.map((user) => `${user.username} (${user.uid})`).join(", ");
-  }
+  const accountText = users.length > 0 ? t("status.accountCount", { count: users.length }) : "-";
+  const userText =
+    users.length > 0 ? users.map((user) => `${user.username} (${user.uid})`).join(", ") : "-";
 
   let scheduleColor = "default";
   let scheduleText = t("status.scheduleDisabled");
   let scheduleCron = "-";
+  let scheduleTone: StatusMetricProps["tone"] = "default";
   if (status.schedule.enabled) {
     scheduleColor = "blue";
     scheduleText = t("status.scheduleEnabled");
     scheduleCron = status.schedule.cron;
+    scheduleTone = "blue";
   }
 
   const formatTime = (timestamp: number | null) => {
@@ -60,55 +93,63 @@ export function StatusCard({ status }: StatusCardProps) {
     return new Date(timestamp * 1000).toLocaleString();
   };
 
-  let scheduleError: ReactNode = null;
-  if (status.schedule.last_error) {
-    scheduleError = (
-      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-        {t("status.scheduleLastError", { message: status.schedule.last_error })}
-      </Typography.Paragraph>
-    );
-  }
-
-  let lastError: ReactNode = null;
-  if (status.last_error) {
-    lastError = (
-      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-        {t("status.lastError", { message: status.last_error })}
-      </Typography.Paragraph>
-    );
-  }
-
   return (
-    <Card title={t("status.title")}>
-      <Descriptions
-        bordered={true}
-        className="status-descriptions"
-        column={{ xs: 1, sm: 2, xl: 4 }}
-        size="small"
-      >
-        <Descriptions.Item label={t("status.api")}>
-          <Tag color="green">{status.status}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label={t("status.login")}>
-          <Tag color={loginColor}>{loginText}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label={t("status.user")}>{userText}</Descriptions.Item>
-        <Descriptions.Item label={t("status.syncJob")}>
-          <Tag color={jobColor}>{job}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label={t("status.schedule")}>
-          <Tag color={scheduleColor}>{scheduleText}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label={t("status.scheduleCron")}>{scheduleCron}</Descriptions.Item>
-        <Descriptions.Item label={t("status.nextRun")}>
-          {formatTime(status.schedule.next_run)}
-        </Descriptions.Item>
-        <Descriptions.Item label={t("status.lastRun")}>
-          {formatTime(status.schedule.last_run)}
-        </Descriptions.Item>
-      </Descriptions>
-      {scheduleError}
-      {lastError}
+    <Card className="status-card" title={t("status.title")}>
+      <div className="status-metric-grid">
+        <StatusMetric
+          icon={<ApiOutlined />}
+          label={t("status.api")}
+          tone="green"
+          value={<Tag color="green">{status.status}</Tag>}
+        />
+        <StatusMetric
+          icon={<LoginOutlined />}
+          label={t("status.login")}
+          tone={loginTone}
+          value={<Tag color={loginColor}>{loginText}</Tag>}
+        />
+        <StatusMetric
+          icon={<UserOutlined />}
+          label={t("status.user")}
+          meta={<Typography.Text ellipsis={{ tooltip: userText }}>{userText}</Typography.Text>}
+          value={accountText}
+        />
+        <StatusMetric
+          icon={<CloudSyncOutlined />}
+          label={t("status.syncJob")}
+          tone={status.job.state === "running" ? "blue" : "default"}
+          value={<Tag color={jobColor}>{job}</Tag>}
+        />
+        <StatusMetric
+          icon={<ClockCircleOutlined />}
+          label={t("status.schedule")}
+          meta={scheduleCron}
+          tone={scheduleTone}
+          value={<Tag color={scheduleColor}>{scheduleText}</Tag>}
+        />
+        <StatusMetric
+          icon={<ClockCircleOutlined />}
+          label={t("status.nextRun")}
+          meta={`${t("status.lastRun")}: ${formatTime(status.schedule.last_run)}`}
+          value={formatTime(status.schedule.next_run)}
+        />
+      </div>
+      {status.schedule.last_error ? (
+        <Alert
+          className="status-alert"
+          showIcon={true}
+          type="error"
+          message={t("status.scheduleLastError", { message: status.schedule.last_error })}
+        />
+      ) : null}
+      {status.last_error ? (
+        <Alert
+          className="status-alert"
+          showIcon={true}
+          type="error"
+          message={t("status.lastError", { message: status.last_error })}
+        />
+      ) : null}
     </Card>
   );
 }
