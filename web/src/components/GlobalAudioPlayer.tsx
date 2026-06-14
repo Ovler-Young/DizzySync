@@ -1,14 +1,16 @@
 import {
+  MinusOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   RetweetOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
   SwapOutlined,
+  UndoOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Button, Empty, Image, List, Popover, Space, Tooltip, Typography } from "antd";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 
@@ -194,7 +196,27 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   } else if (loopMode === "all") {
     loopLabel = t("player.loopAll");
   }
-  const loopIcon = loopMode === "shuffle" ? <SwapOutlined /> : <RetweetOutlined />;
+  const playPauseIcon = (
+    <span className="global-player-icon-stack" aria-hidden="true">
+      <PlayCircleOutlined
+        className={`global-player-icon-layer ${
+          isPlaying ? "global-player-icon-layer-inactive" : "global-player-icon-layer-active"
+        }`}
+      />
+      <PauseCircleOutlined
+        className={`global-player-icon-layer ${
+          isPlaying ? "global-player-icon-layer-active" : "global-player-icon-layer-inactive"
+        }`}
+      />
+    </span>
+  );
+  const loopIcons: Record<PlaybackLoopMode, ReactNode> = {
+    none: <MinusOutlined />,
+    one: <UndoOutlined />,
+    shuffle: <SwapOutlined />,
+    all: <RetweetOutlined />,
+  };
+  const loopIcon = loopIcons[loopMode];
 
   const queueContent = (
     <List
@@ -270,7 +292,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
         <Tooltip title={isPlaying ? t("player.pause") : t("player.play")}>
           <Button
             disabled={!currentTrack}
-            icon={isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+            icon={playPauseIcon}
             type="primary"
             onClick={togglePlay}
           />

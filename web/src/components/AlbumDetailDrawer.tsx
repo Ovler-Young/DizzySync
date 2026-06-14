@@ -159,6 +159,7 @@ export function AlbumDetailDrawer({
           {album.cover ? (
             <Image
               alt={`${album.title} cover`}
+              className="detail-cover"
               referrerPolicy="no-referrer"
               src={album.cover}
               width={180}

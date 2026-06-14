@@ -176,7 +176,7 @@ function AlbumActions({ album, syncDisabled, onPlay, onShow, onSync }: AlbumActi
   const playable = hasPlayableLocalAudio(album);
 
   return (
-    <Space wrap={true} size={4}>
+    <Space className="album-table-actions" wrap={false} size={4}>
       <Tooltip title={t("album.detail")}>
         <Button aria-label={t("album.detail")} icon={<EyeOutlined />} onClick={showAlbum} />
       </Tooltip>
@@ -317,7 +317,8 @@ export function AlbumTable({
       actions: {
         title: t("album.actions"),
         key: "actions",
-        width: 132,
+        className: "album-actions-cell",
+        width: 168,
         render: (_, album) => (
           <AlbumActions
             album={album}
