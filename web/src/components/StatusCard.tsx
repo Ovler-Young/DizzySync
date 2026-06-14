@@ -1,10 +1,20 @@
 import { Alert, Card, Descriptions, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useI18n } from "../i18n.tsx";
-import type { StatusResponse } from "../types.ts";
+import type { StatusResponse, UserInfo } from "../types.ts";
 
 interface StatusCardProps {
   status: StatusResponse | null;
+}
+
+function resolveUsers(status: StatusResponse): UserInfo[] {
+  if (status.users.length > 0) {
+    return status.users;
+  }
+  if (status.user) {
+    return [status.user];
+  }
+  return [];
 }
 
 export function StatusCard({ status }: StatusCardProps) {
@@ -28,9 +38,10 @@ export function StatusCard({ status }: StatusCardProps) {
     loginText = t("status.ready");
   }
 
+  const users = resolveUsers(status);
   let userText = "-";
-  if (status.user) {
-    userText = `${status.user.username} (${status.user.uid})`;
+  if (users.length > 0) {
+    userText = users.map((user) => `${user.username} (${user.uid})`).join(", ");
   }
 
   let scheduleColor = "default";
