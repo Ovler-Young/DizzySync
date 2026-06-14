@@ -94,7 +94,7 @@ function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActio
 
   return (
     <Space className="track-actions" wrap={true}>
-<Tooltip title={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}>
+      <Tooltip title={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}>
         <Button
           aria-label={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
           disabled={!playable}
