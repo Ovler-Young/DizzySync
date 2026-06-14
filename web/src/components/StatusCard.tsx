@@ -13,7 +13,40 @@ export function StatusCard({ status }: StatusCardProps) {
     return <Alert showIcon={true} type="info" message={t("status.loading")} />;
   }
 
-  const job = status.job.state === "running" ? `${status.job.kind}` : t("status.idle");
+  let job = t("status.idle");
+  let jobColor = "default";
+  if (status.job.state === "running") {
+    job = status.job.kind;
+    jobColor = "processing";
+  }
+
+  let loginColor = "orange";
+  let loginText = t("status.notReady");
+  if (status.ready) {
+    loginColor = "green";
+    loginText = t("status.ready");
+  }
+
+  let userText = "-";
+  if (status.user) {
+    userText = `${status.user.username} (${status.user.uid})`;
+  }
+
+  let scheduleColor = "default";
+  let scheduleText = t("status.scheduleDisabled");
+  let scheduleCron = "-";
+  if (status.schedule.enabled) {
+    scheduleColor = "blue";
+    scheduleText = t("status.scheduleEnabled");
+    scheduleCron = status.schedule.cron;
+  }
+
+  const formatTime = (timestamp: number | null) => {
+    if (!timestamp) {
+      return "-";
+    }
+    return new Date(timestamp * 1000).toLocaleString();
+  };
 
   return (
     <Card title={t("status.title")}>
@@ -22,22 +55,33 @@ export function StatusCard({ status }: StatusCardProps) {
           <Tag color="green">{status.status}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label={t("status.login")}>
-          <Tag color={status.ready ? "green" : "orange"}>
-            {status.ready ? t("status.ready") : t("status.notReady")}
-          </Tag>
+          <Tag color={loginColor}>{loginText}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label={t("status.user")}>
-          {status.user ? `${status.user.username} (${status.user.uid})` : "-"}
-        </Descriptions.Item>
+        <Descriptions.Item label={t("status.user")}>{userText}</Descriptions.Item>
         <Descriptions.Item label={t("status.syncJob")}>
-          <Tag color={status.job.state === "running" ? "processing" : "default"}>{job}</Tag>
+          <Tag color={jobColor}>{job}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label={t("status.schedule")}>
+          <Tag color={scheduleColor}>{scheduleText}</Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label={t("status.scheduleCron")}>{scheduleCron}</Descriptions.Item>
+        <Descriptions.Item label={t("status.nextRun")}>
+          {formatTime(status.schedule.next_run)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("status.lastRun")}>
+          {formatTime(status.schedule.last_run)}
         </Descriptions.Item>
       </Descriptions>
-      {status.last_error ? (
+      {status.schedule.last_error && (
+        <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
+          {t("status.scheduleLastError", { message: status.schedule.last_error })}
+        </Typography.Paragraph>
+      )}
+      {status.last_error && (
         <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
           {t("status.lastError", { message: status.last_error })}
         </Typography.Paragraph>
-      ) : null}
+      )}
     </Card>
   );
 }

@@ -47,6 +47,14 @@ generate_nfo = true        # 生成NFO信息文件
 # false: 下载完整的专辑内容（默认）
 metadata_only = false
 
+[schedule]
+# 仅在 --api-server / Web GUI 模式下生效：按 cron 自动触发全量同步
+# cron 使用 7 段格式：秒 分 时 日 月 星期 年
+# 示例：每天 03:00 自动同步
+# 注意：同一时间只允许一个同步任务运行；若手动同步正在运行，本次自动同步会跳过
+enabled = false
+cron = "0 0 3 * * * *"
+
 [api]
 # API/Web 控制服务监听地址。
 # 本地默认使用 127.0.0.1；Docker/Compose 会通过命令行覆盖为 0.0.0.0:8787。
