@@ -211,6 +211,11 @@ pub fn generate_nfo_content(disc_info: &DiscInfo) -> String {
         .first()
         .map(|t| t.authers.as_str())
         .unwrap_or(&disc_info.label);
+    let genre = disc_info
+        .tags
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("Music");
     let year = disc_info
         .release_date
         .as_deref()
@@ -237,9 +242,9 @@ pub fn generate_nfo_content(disc_info: &DiscInfo) -> String {
                  <title>{}</title>\n            <artist>{}</artist>\n            \
                  <id>{}</id>\n        </track>",
                 i + 1,
-                t.title,
-                author,
-                t.id,
+                xml_escape(&t.title),
+                xml_escape(author),
+                xml_escape(&t.id),
             )
         })
         .collect::<Vec<_>>()
@@ -248,7 +253,7 @@ pub fn generate_nfo_content(disc_info: &DiscInfo) -> String {
     let tags_xml = disc_info
         .tags
         .iter()
-        .map(|tag| format!("        <tag>{tag}</tag>"))
+        .map(|tag| format!("        <tag>{}</tag>", xml_escape(tag)))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -279,26 +284,31 @@ pub fn generate_nfo_content(disc_info: &DiscInfo) -> String {
     <source>Dizzylab</source>
     <url>https://www.dizzylab.net/d/{id}/</url>
 </album>"#,
-        title = disc_info.title,
-        artist = authors,
-        genre = disc_info
-            .tags
-            .first()
-            .map(|s| s.as_str())
-            .unwrap_or("Music"),
-        year = year,
-        releasedate = disc_info.release_date.as_deref().unwrap_or("Unknown"),
-        label = disc_info.label,
-        label_description = disc_info.label_description.as_deref().unwrap_or(""),
-        id = disc_info.id,
-        price = price_str,
+        title = xml_escape(&disc_info.title),
+        artist = xml_escape(authors),
+        genre = xml_escape(genre),
+        year = xml_escape(&year),
+        releasedate = xml_escape(disc_info.release_date.as_deref().unwrap_or("Unknown")),
+        label = xml_escape(&disc_info.label),
+        label_description = xml_escape(disc_info.label_description.as_deref().unwrap_or("")),
+        id = xml_escape(&disc_info.id),
+        price = xml_escape(&price_str),
         onsell = disc_info.onsell,
         ispreselling = disc_info.ispreselling,
         hasgift = disc_info.hasgift,
         onlyhavegift = disc_info.onlyhavegift,
-        plot = disc_info.disc_description.as_deref().unwrap_or(""),
-        plot2 = disc_info.disc_description_2.as_deref().unwrap_or(""),
+        plot = xml_escape(disc_info.disc_description.as_deref().unwrap_or("")),
+        plot2 = xml_escape(disc_info.disc_description_2.as_deref().unwrap_or("")),
         tags_xml = tags_xml,
         tracks_xml = tracks_xml,
     )
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }

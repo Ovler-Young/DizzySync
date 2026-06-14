@@ -150,6 +150,11 @@ impl Config {
             "DIZZYSYNC_PASSWORD",
             fill_empty_only,
         );
+        apply_string_env(
+            &mut self.api.api_key,
+            "DIZZYSYNC_WEB_PASSWORD",
+            fill_empty_only,
+        );
         apply_string_env(&mut self.api.api_key, "DIZZYSYNC_API_KEY", fill_empty_only);
 
         if let Ok(output_dir) = std::env::var("DIZZYSYNC_OUTPUT_DIR") {

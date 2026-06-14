@@ -4,8 +4,8 @@ use filetime::{set_file_times, FileTime};
 use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
-use std::path::Path;
-use tracing::{debug, error, warn};
+use std::path::{Component, Path, PathBuf};
+use tracing::{debug, warn};
 use unrar::Archive;
 use zip::ZipArchive;
 
@@ -64,14 +64,19 @@ pub fn extract_zip_from_path(zip_path: &Path, format: &str, album_dir: &Path) ->
             continue;
         }
 
-        debug!("解压文件: {}", file_name);
+        let Some(safe_name) = sanitize_archive_path(file_name.as_ref()) else {
+            warn!("跳过不安全的ZIP路径: {}", file_name);
+            continue;
+        };
+
+        debug!("解压文件: {}", safe_name.display());
 
         let output_path = if format == "gift" {
             let format_dir = album_dir.join(format);
             fs::create_dir_all(&format_dir)?;
-            format_dir.join(&*file_name)
+            format_dir.join(&safe_name)
         } else {
-            album_dir.join(&*file_name)
+            album_dir.join(&safe_name)
         };
 
         if let Some(parent) = output_path.parent() {
@@ -101,49 +106,70 @@ pub fn extract_rar_from_path(rar_path: &Path, format: &str, album_dir: &Path) ->
 }
 
 fn process_rar_archive(
-    mut archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
+    archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
     format: &str,
     album_dir: &Path,
 ) -> Result<()> {
-    loop {
-        match archive.read_header() {
-            Ok(Some(header_archive)) => {
+    let mut next_archive = Some(archive);
+
+    while let Some(archive) = next_archive.take() {
+        match archive.read_header()? {
+            Some(header_archive) => {
                 let entry = header_archive.entry();
                 let filename = &entry.filename;
 
                 if entry.is_directory() {
-                    archive = header_archive.skip()?;
+                    next_archive = Some(header_archive.skip()?);
                     continue;
                 }
 
-                debug!("解压RAR文件: {}", filename.display());
+                let Some(safe_name) = sanitize_archive_path(filename) else {
+                    warn!("跳过不安全的RAR路径: {}", filename.display());
+                    next_archive = Some(header_archive.skip()?);
+                    continue;
+                };
+
+                debug!("解压RAR文件: {}", safe_name.display());
 
                 let output_path = if format == "gift" {
                     let format_dir = album_dir.join(format);
                     fs::create_dir_all(&format_dir)?;
-                    format_dir.join(filename)
+                    format_dir.join(&safe_name)
                 } else {
-                    album_dir.join(filename)
+                    album_dir.join(&safe_name)
                 };
 
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
 
-                let (data, next_archive) = header_archive.read()?;
+                let (data, archive) = header_archive.read()?;
                 fs::write(&output_path, data)?;
-
-                archive = next_archive;
+                next_archive = Some(archive);
             }
-            Ok(None) => break,
-            Err(e) => {
-                error!("读取RAR头部失败: {}", e);
-                break;
-            }
+            None => break,
         }
     }
 
     Ok(())
+}
+
+fn sanitize_archive_path(path: impl AsRef<Path>) -> Option<PathBuf> {
+    let mut safe_path = PathBuf::new();
+
+    for component in path.as_ref().components() {
+        match component {
+            Component::Normal(part) => safe_path.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+
+    if safe_path.as_os_str().is_empty() {
+        None
+    } else {
+        Some(safe_path)
+    }
 }
 
 /// Parse an HTTP `Last-Modified` header value (RFC 2822) into a FileTime.
