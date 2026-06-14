@@ -197,8 +197,12 @@ async fn main() -> Result<()> {
     }
 
     if let Some(output_dir) = matches.get_one::<String>("output-dir") {
-        config.paths.output_dir = PathBuf::from(output_dir);
-        info!("设置输出目录: {}", output_dir);
+        if is_api_server && std::env::var("DIZZYSYNC_OUTPUT_DIR").is_ok() {
+            info!("已设置 DIZZYSYNC_OUTPUT_DIR，忽略 --output-dir 参数");
+        } else {
+            config.paths.output_dir = PathBuf::from(output_dir);
+            info!("设置输出目录: {}", output_dir);
+        }
     }
 
     if let Some(api_bind) = matches.get_one::<String>("api-bind") {
@@ -217,6 +221,7 @@ async fn main() -> Result<()> {
     }
 
     if is_api_server {
+        config.apply_env_overrides(true);
         config.save_to_file(config_path)?;
         return api_control::run(api_control::ApiServerOptions {
             config_path: config_path.clone(),

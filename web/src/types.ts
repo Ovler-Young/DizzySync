@@ -22,6 +22,12 @@ export interface ScheduleState {
   last_error: string | null;
 }
 
+export interface LogEntry {
+  timestamp: number;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
 export type JobState = { state: "idle" } | { state: "running"; kind: string; started_at: number };
 
 export interface DiscListItem {
@@ -85,12 +91,14 @@ export interface PublicDownloadConfig {
 export interface PublicPathsConfig {
   output_dir: string;
   directory_template: string;
+  output_dir_locked: boolean;
 }
 
 export interface PublicBehaviorConfig {
   skip_existing: boolean;
   single_threaded: boolean;
   max_concurrent_albums: number;
+  max_concurrent_albums_locked: boolean;
   generate_readme: boolean;
   generate_nfo: boolean;
   debug: boolean;
@@ -120,7 +128,7 @@ export interface UpdateConfigRequest {
     output_dir?: string;
     directory_template?: string;
   };
-  behavior?: Partial<PublicBehaviorConfig>;
+  behavior?: Partial<Omit<PublicBehaviorConfig, "max_concurrent_albums_locked">>;
   schedule?: Partial<PublicScheduleConfig>;
   api?: {
     api_key?: string;
