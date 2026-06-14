@@ -97,29 +97,36 @@ const translations: Record<Language, TranslationMap> = {
     "config.scheduleEnabled": "启用自动同步",
     "config.scheduleCron": "自动同步 Cron",
     "config.scheduleCronRequired": "请输入 cron 表达式",
-    "config.scheduleCronHelp": "使用 7 段 cron：秒 分 时 日 月 周 年。例如 0 0 3 * * * * 表示每天 03:00 同步。",
+    "config.scheduleCronHelp":
+      "使用 7 段 cron：秒 分 时 日 月 周 年。例如 0 0 3 * * * * 表示每天 03:00 同步。",
     "config.save": "保存配置",
     "config.saveOnboarding": "验证并完成设置",
     "config.saved": "配置已验证并保存",
     "guide.title": "配置指南",
     "guide.credentials.title": "凭据保存位置",
-    "guide.credentials.description": "Dizzylab 凭据和同步配置保存在服务端 config.toml 中；Docker Compose 默认将该文件放在 dizzysync_config 卷中。Docker 环境变量只需要提供 Web UI 密码。",
+    "guide.credentials.description":
+      "Dizzylab 凭据和同步配置保存在服务端 config.toml 中；Docker Compose 默认将该文件放在 dizzysync_config 卷中。Docker 环境变量只需要提供 Web UI 密码。",
     "guide.user.label": "登录凭据 [user]",
-    "guide.user.body": "username 和 password 是 Dizzylab 登录凭据。首次设置和后续修改均在 Web UI 中完成。保存时会先登录 Dizzylab 验证，成功后才写入配置。",
+    "guide.user.body":
+      "username 和 password 是 Dizzylab 登录凭据。首次设置和后续修改均在 Web UI 中完成。保存时会先登录 Dizzylab 验证，成功后才写入配置。",
     "guide.download.label": "下载格式 [download]",
     "guide.download.conflict": "128 和 320 都会输出 .mp3 文件，不能同时选择，否则文件名会冲突。",
     "guide.paths.label": "路径与目录模板 [paths]",
-    "guide.paths.body": "output_dir 是下载输出目录；Docker 中应保持为 /data。directory_template 支持变量：{album}、{label}、{authors}、{year}、{date}。默认模板会按“专辑名/@厂牌名”组织文件。",
+    "guide.paths.body":
+      "output_dir 是下载输出目录；Docker 中应保持为 /data。directory_template 支持变量：{album}、{label}、{authors}、{year}、{date}。默认模板会按“专辑名/@厂牌名”组织文件。",
     "guide.behavior.label": "同步行为 [behavior]",
     "guide.behavior.skipExisting": "skip_existing：跳过已存在目录。",
     "guide.behavior.singleThreaded": "single_threaded：单线程下载，减轻服务器压力。",
     "guide.behavior.maxConcurrent": "max_concurrent_albums：关闭单线程后同时处理的专辑数。",
-    "guide.behavior.metadata": "generate_readme / generate_nfo：生成媒体库元数据文件。metadata_only：只下载封面、README、NFO，不下载音频。",
+    "guide.behavior.metadata":
+      "generate_readme / generate_nfo：生成媒体库元数据文件。metadata_only：只下载封面、README、NFO，不下载音频。",
     "guide.behavior.debug": "debug：输出更详细的 HTTP 调试日志。",
     "guide.schedule.label": "自动同步 [schedule]",
-    "guide.schedule.body": "enabled 开启后，Web GUI 模式会按 cron 表达式自动执行全量同步；表达式使用 7 段格式：秒 分 时 日 月 周 年。",
+    "guide.schedule.body":
+      "enabled 开启后，Web GUI 模式会按 cron 表达式自动执行全量同步；表达式使用 7 段格式：秒 分 时 日 月 周 年。",
     "guide.api.label": "API 与 Web 控制 [api]",
-    "guide.api.body": "Rust 服务同时提供 Web GUI 和 /api/*。Docker 监听 0.0.0.0:8787，但只暴露一个端口。Web UI 密码会作为 API key 保存到配置中，用于保护远程控制接口。",
+    "guide.api.body":
+      "Rust 服务同时提供 Web GUI 和 /api/*。Docker 监听 0.0.0.0:8787，但只暴露一个端口。Web UI 密码会作为 API key 保存到配置中，用于保护远程控制接口。",
   },
   "en-US": {
     "app.title": "DizzySync Console",
@@ -180,7 +187,8 @@ const translations: Record<Language, TranslationMap> = {
     "detail.tracks": "Tracks ({count})",
     "config.title": "Settings",
     "config.onboardingTitle": "First-time setup",
-    "config.description": "Config file: {path}. Leave the Dizzylab password or Web UI password empty to keep the current value.",
+    "config.description":
+      "Config file: {path}. Leave the Dizzylab password or Web UI password empty to keep the current value.",
     "config.unknown": "Unknown",
     "config.username": "Dizzylab username",
     "config.usernameRequired": "Enter your Dizzylab username",
@@ -208,29 +216,39 @@ const translations: Record<Language, TranslationMap> = {
     "config.scheduleEnabled": "Enable auto sync",
     "config.scheduleCron": "Auto-sync cron",
     "config.scheduleCronRequired": "Enter a cron expression",
-    "config.scheduleCronHelp": "Use 7 fields: second minute hour day month weekday year. Example: 0 0 3 * * * * runs daily at 03:00.",
+    "config.scheduleCronHelp":
+      "Use 7 fields: second minute hour day month weekday year. Example: 0 0 3 * * * * runs daily at 03:00.",
     "config.save": "Save configuration",
     "config.saveOnboarding": "Validate and finish setup",
     "config.saved": "Configuration validated and saved",
     "guide.title": "Configuration guide",
     "guide.credentials.title": "Where credentials are stored",
-    "guide.credentials.description": "Dizzylab credentials and sync settings are stored in the server-side config.toml. Docker Compose stores it in the dizzysync_config volume by default. Docker only needs the Web UI password as an environment variable.",
+    "guide.credentials.description":
+      "Dizzylab credentials and sync settings are stored in the server-side config.toml. Docker Compose stores it in the dizzysync_config volume by default. Docker only needs the Web UI password as an environment variable.",
     "guide.user.label": "Login credentials [user]",
-    "guide.user.body": "username and password are your Dizzylab login credentials. Initial setup and future changes happen in the Web UI. Saving validates the credentials against Dizzylab before writing config.",
+    "guide.user.body":
+      "username and password are your Dizzylab login credentials. Initial setup and future changes happen in the Web UI. Saving validates the credentials against Dizzylab before writing config.",
     "guide.download.label": "Download formats [download]",
-    "guide.download.conflict": "128 and 320 both output .mp3 files and cannot be selected together.",
+    "guide.download.conflict":
+      "128 and 320 both output .mp3 files and cannot be selected together.",
     "guide.paths.label": "Paths and directory template [paths]",
-    "guide.paths.body": "output_dir is the download directory; keep it as /data in Docker. directory_template supports {album}, {label}, {authors}, {year}, and {date}. The default organizes files by album/@label.",
+    "guide.paths.body":
+      "output_dir is the download directory; keep it as /data in Docker. directory_template supports {album}, {label}, {authors}, {year}, and {date}. The default organizes files by album/@label.",
     "guide.behavior.label": "Sync behavior [behavior]",
     "guide.behavior.skipExisting": "skip_existing: skip directories that already exist.",
-    "guide.behavior.singleThreaded": "single_threaded: download one album at a time to reduce server pressure.",
-    "guide.behavior.maxConcurrent": "max_concurrent_albums: number of albums processed at once when single-threaded mode is off.",
-    "guide.behavior.metadata": "generate_readme / generate_nfo: generate media-library metadata. metadata_only: download covers, README, and NFO only, not audio.",
+    "guide.behavior.singleThreaded":
+      "single_threaded: download one album at a time to reduce server pressure.",
+    "guide.behavior.maxConcurrent":
+      "max_concurrent_albums: number of albums processed at once when single-threaded mode is off.",
+    "guide.behavior.metadata":
+      "generate_readme / generate_nfo: generate media-library metadata. metadata_only: download covers, README, and NFO only, not audio.",
     "guide.behavior.debug": "debug: print more detailed HTTP debug logs.",
     "guide.schedule.label": "Auto sync [schedule]",
-    "guide.schedule.body": "When enabled is true, Web GUI mode runs a full sync automatically according to the cron expression. The expression uses 7 fields: second minute hour day month weekday year.",
+    "guide.schedule.body":
+      "When enabled is true, Web GUI mode runs a full sync automatically according to the cron expression. The expression uses 7 fields: second minute hour day month weekday year.",
     "guide.api.label": "API and Web control [api]",
-    "guide.api.body": "The Rust service provides both the Web GUI and /api/*. Docker listens on 0.0.0.0:8787 and exposes only one port. The Web UI password is saved as the API key to protect remote control access.",
+    "guide.api.body":
+      "The Rust service provides both the Web GUI and /api/*. Docker listens on 0.0.0.0:8787 and exposes only one port. The Web UI password is saved as the API key to protect remote control access.",
   },
 };
 

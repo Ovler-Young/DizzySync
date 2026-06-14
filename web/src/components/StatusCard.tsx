@@ -1,4 +1,5 @@
 import { Alert, Card, Descriptions, Tag, Typography } from "antd";
+import type { ReactNode } from "react";
 import { useI18n } from "../i18n.tsx";
 import type { StatusResponse } from "../types.ts";
 
@@ -48,6 +49,24 @@ export function StatusCard({ status }: StatusCardProps) {
     return new Date(timestamp * 1000).toLocaleString();
   };
 
+  let scheduleError: ReactNode = null;
+  if (status.schedule.last_error) {
+    scheduleError = (
+      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
+        {t("status.scheduleLastError", { message: status.schedule.last_error })}
+      </Typography.Paragraph>
+    );
+  }
+
+  let lastError: ReactNode = null;
+  if (status.last_error) {
+    lastError = (
+      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
+        {t("status.lastError", { message: status.last_error })}
+      </Typography.Paragraph>
+    );
+  }
+
   return (
     <Card title={t("status.title")}>
       <Descriptions bordered={true} column={{ xs: 1, sm: 2, lg: 4 }} size="small">
@@ -72,16 +91,8 @@ export function StatusCard({ status }: StatusCardProps) {
           {formatTime(status.schedule.last_run)}
         </Descriptions.Item>
       </Descriptions>
-      {status.schedule.last_error && (
-        <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-          {t("status.scheduleLastError", { message: status.schedule.last_error })}
-        </Typography.Paragraph>
-      )}
-      {status.last_error && (
-        <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-          {t("status.lastError", { message: status.last_error })}
-        </Typography.Paragraph>
-      )}
+      {scheduleError}
+      {lastError}
     </Card>
   );
 }
