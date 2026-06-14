@@ -941,13 +941,34 @@ async fn refresh_album_cache(
     let cache_key = album_cache_key(sessions);
     let mut albums_by_id = std::collections::BTreeMap::new();
     for session in sessions {
-        for album in session.client.get_my_discs(&session.token).await? {
+        for mut album in session.client.get_my_discs(&session.token).await? {
+            if album.release_date.is_none() || album.track_count.is_none() {
+                match session
+                    .client
+                    .get_disc_info(&album.id, &session.token)
+                    .await
+                {
+                    Ok(detail) => enrich_list_item_from_detail(&mut album, &detail),
+                    Err(e) => {
+                        tracing::debug!("无法用专辑详情补全列表缓存 {} 的元数据: {}", album.id, e)
+                    }
+                }
+            }
             albums_by_id.entry(album.id.clone()).or_insert(album);
         }
     }
     let albums = albums_by_id.into_values().collect::<Vec<_>>();
     write_album_cache(&state.config_path, &cache_key, &albums).await;
     Ok(albums)
+}
+
+fn enrich_list_item_from_detail(album: &mut DiscListItem, detail: &crate::types::DiscInfo) {
+    if album.release_date.is_none() {
+        album.release_date = detail.release_date.clone();
+    }
+    if album.track_count.is_none() && !detail.tracks.is_empty() {
+        album.track_count = Some(detail.tracks.len());
+    }
 }
 
 async fn start_sync(

@@ -18,6 +18,9 @@ pub fn annotate_album_list(config: &Config, albums: &mut [DiscListItem]) {
         } else {
             expected_dir
         };
+        if album.release_date.is_none() {
+            album.release_date = read_album_release_date_from_metadata(&album_dir);
+        }
         album.local = Some(album_state_from_dir(
             config,
             &album_dir,
@@ -54,9 +57,13 @@ fn album_state_from_dir(
     let mut formats = BTreeMap::new();
 
     if directory_exists {
-        for format in &config.download.formats {
+        for format in config
+            .download
+            .formats
+            .iter()
+            .filter(|format| format.as_str() != "gift")
+        {
             let present = match format.as_str() {
-                "gift" => album_dir.join("gift").is_dir(),
                 "FLAC" => count_extension(album_dir, "flac") > 0,
                 "128" | "320" => count_extension(album_dir, "mp3") > 0,
                 other => count_extension(album_dir, extension_for_format(other)) > 0,
@@ -107,7 +114,7 @@ fn album_state_from_dir(
             (estimated, 0)
         });
 
-    let has_media = audio_files > 0 || gift_exists;
+    let has_media = audio_files > 0;
     let audio_formats: Vec<_> = config
         .download
         .formats
@@ -118,18 +125,16 @@ fn album_state_from_dir(
         && audio_formats
             .iter()
             .all(|format| formats.get(format.as_str()).copied().unwrap_or(false));
-    let gift_complete = !config
+    let gift_configured = config
         .download
         .formats
         .iter()
-        .any(|format| format == "gift")
-        || gift_exists;
+        .any(|format| format == "gift");
+    let gift_missing = gift_configured && !gift_exists;
     let complete = if expected_tracks > 0 && album.is_some() {
-        complete_tracks >= expected_tracks && audio_formats_complete && gift_complete
+        complete_tracks >= expected_tracks && audio_formats_complete
     } else if expected_tracks > 0 {
-        audio_formats_complete
-            && audio_files >= expected_tracks * audio_formats.len()
-            && gift_complete
+        audio_formats_complete && audio_files >= expected_tracks
     } else {
         false
     };
@@ -152,6 +157,8 @@ fn album_state_from_dir(
         has_media,
         complete,
         gift_exists,
+        gift_configured,
+        gift_missing,
         formats,
         missing_formats,
         missing_tracks,
@@ -250,6 +257,43 @@ fn read_album_id_from_metadata(dir: &Path) -> Option<String> {
     }
 
     None
+}
+
+fn read_album_release_date_from_metadata(dir: &Path) -> Option<String> {
+    let nfo = dir.join("album.nfo");
+    if let Ok(content) = fs::read_to_string(&nfo) {
+        if let Some(value) = extract_between(&content, "<releasedate>", "</releasedate>") {
+            if !is_unknown_metadata_value(&value) {
+                return Some(value);
+            }
+        }
+    }
+
+    let readme = dir.join("README.md");
+    if let Ok(content) = fs::read_to_string(&readme) {
+        for line in content.lines() {
+            if line.contains("发布日期")
+                || line.contains("发行时间")
+                || line.to_ascii_lowercase().contains("release date")
+            {
+                if let Some((_, value)) = line.split_once(':').or_else(|| line.split_once('：')) {
+                    let date = value.trim().trim_matches('*').trim();
+                    if !date.is_empty() && !is_unknown_metadata_value(date) {
+                        return Some(date.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn is_unknown_metadata_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "" | "unknown" | "未知" | "null" | "none" | "-"
+    )
 }
 
 fn extract_between(content: &str, start: &str, end: &str) -> Option<String> {

@@ -463,7 +463,36 @@ li,
 }
 
 .track-actions {
-  margin-top: 2px;
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.track-table .ant-table-cell {
+  vertical-align: middle;
+}
+
+.track-title-cell {
+  min-width: 0;
+  width: 100%;
+}
+
+.track-title-cell .ant-space-item:has(.track-title-text) {
+  min-width: 0;
+}
+
+.track-title-text,
+.track-author-text,
+.track-duration {
+  white-space: nowrap;
+}
+
+.track-author-text {
+  color: rgba(0, 0, 0, 0.45);
+  max-width: 38%;
+}
+
+.track-duration {
+  font-variant-numeric: tabular-nums;
 }
 
 .app-footer {

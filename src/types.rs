@@ -17,8 +17,13 @@ pub struct LocalAlbumState {
     #[serde(default)]
     pub complete: bool,
     pub gift_exists: bool,
+    #[serde(default)]
+    pub gift_configured: bool,
+    #[serde(default)]
+    pub gift_missing: bool,
+    /// Configured audio formats only. Gift is tracked separately.
     pub formats: BTreeMap<String, bool>,
-    /// Configured album-level formats that are not present locally (including gift).
+    /// Configured album-level audio formats that are not present locally. Gift is tracked separately.
     #[serde(default)]
     pub missing_formats: Vec<String>,
     /// Known tracks that are incomplete or missing locally. Populated when full album metadata is available.
@@ -236,6 +241,21 @@ pub struct Track {
         deserialize_with = "string_from_optional_value"
     )]
     pub coverurl: String,
+    #[serde(
+        default,
+        alias = "durationSeconds",
+        alias = "duration_seconds",
+        alias = "duration_sec",
+        alias = "durationSecs",
+        alias = "duration_secs",
+        alias = "length",
+        alias = "lengthSeconds",
+        alias = "length_seconds",
+        alias = "time",
+        deserialize_with = "optional_string_from_flexible_value",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub duration: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local: Option<LocalTrackState>,
 }
