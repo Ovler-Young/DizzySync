@@ -1,12 +1,6 @@
-import {
-  ExportOutlined,
-  FolderOpenOutlined,
-  PlayCircleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
+import { ExportOutlined, PlayCircleOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Tooltip, Typography } from "antd";
 import { useCallback } from "react";
-import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 import type { DiscInfo, Track } from "../types.ts";
 
@@ -83,9 +77,7 @@ interface TrackActionsProps {
 
 function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActionsProps) {
   const { t } = useI18n();
-  const path = track.local?.paths[0];
-  const src = path ? localFileUrl(path) : undefined;
-  const playable = Boolean(path);
+  const playable = Boolean(track.local?.paths[0]);
   const isCurrent = currentTrackKey === trackKey(track);
   const playTrack = useCallback(() => onPlayTrack(album, track), [album, onPlayTrack, track]);
 
@@ -100,11 +92,6 @@ function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActio
       >
         {isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
       </Button>
-      {src ? (
-        <Button href={src} icon={<FolderOpenOutlined />} size="small" target="_blank">
-          {t("detail.openLocalFile")}
-        </Button>
-      ) : null}
     </Space>
   );
 }

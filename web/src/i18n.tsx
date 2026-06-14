@@ -165,7 +165,8 @@ const translations: Record<Language, TranslationMap> = {
     "player.queueEmpty": "没有可播放的本地曲目",
     "player.loopOff": "不循环",
     "player.loopOne": "单曲循环",
-    "player.loopAll": "列表循环",
+    "player.loopShuffle": "随机",
+    "player.loopAll": "专辑循环",
     "guide.title": "配置指南",
     "guide.user.label": "登录凭据 [[users]]",
     "guide.user.body":
@@ -345,9 +346,10 @@ const translations: Record<Language, TranslationMap> = {
     "player.next": "Next",
     "player.queue": "Queue",
     "player.queueEmpty": "No playable local tracks",
-    "player.loopOff": "Loop off",
-    "player.loopOne": "Single-track loop",
-    "player.loopAll": "List loop",
+    "player.loopOff": "No loop",
+    "player.loopOne": "Single loop",
+    "player.loopShuffle": "Shuffle",
+    "player.loopAll": "Album loop",
     "guide.title": "Configuration guide",
     "guide.user.label": "Login credentials [[users]]",
     "guide.user.body":

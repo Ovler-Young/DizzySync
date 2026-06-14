@@ -1,10 +1,10 @@
 import {
-  FolderOpenOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   RetweetOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
+  SwapOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Button, Empty, Image, List, Popover, Space, Tooltip, Typography } from "antd";
@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 
-export type PlaybackLoopMode = "none" | "one" | "all";
+export type PlaybackLoopMode = "none" | "one" | "shuffle" | "all";
 
 export interface PlayerTrack {
   key: string;
@@ -59,7 +59,9 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   const currentSrc = currentTrack ? localFileUrl(currentTrack.path) : undefined;
   const currentCover = currentTrack?.cover ?? null;
   const hasPrevious = tracks.length > 1 && (activeIndex > 0 || loopMode === "all");
-  const hasNext = tracks.length > 1 && (activeIndex < tracks.length - 1 || loopMode === "all");
+  const hasNext =
+    tracks.length > 1 &&
+    (activeIndex < tracks.length - 1 || loopMode === "all" || loopMode === "shuffle");
 
   const trackLabel = useMemo(() => {
     if (!currentTrack) {
@@ -96,6 +98,12 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       if (tracks.length === 0) {
         return;
       }
+      if (loopMode === "shuffle" && tracks.length > 1) {
+        preservePlaybackForSelection(forcePlay);
+        const nextIndex = Math.floor(Math.random() * (tracks.length - 1));
+        onSelectIndex(nextIndex >= activeIndex ? nextIndex + 1 : nextIndex);
+        return;
+      }
       if (activeIndex < tracks.length - 1) {
         preservePlaybackForSelection(forcePlay);
         onSelectIndex(activeIndex + 1);
@@ -125,6 +133,9 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
         return "one";
       }
       if (previous === "one") {
+        return "shuffle";
+      }
+      if (previous === "shuffle") {
         return "all";
       }
       return "none";
@@ -168,7 +179,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       }
       return;
     }
-    if (activeIndex < tracks.length - 1 || loopMode === "all") {
+    if (activeIndex < tracks.length - 1 || loopMode === "all" || loopMode === "shuffle") {
       selectNext(true);
     } else {
       setIsPlaying(false);
@@ -178,9 +189,12 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
   let loopLabel = t("player.loopOff");
   if (loopMode === "one") {
     loopLabel = t("player.loopOne");
+  } else if (loopMode === "shuffle") {
+    loopLabel = t("player.loopShuffle");
   } else if (loopMode === "all") {
     loopLabel = t("player.loopAll");
   }
+  const loopIcon = loopMode === "shuffle" ? <SwapOutlined /> : <RetweetOutlined />;
 
   const queueContent = (
     <List
@@ -266,23 +280,17 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
         </Tooltip>
         <Tooltip title={loopLabel}>
           <Button
+            aria-label={loopLabel}
             className={loopMode === "none" ? undefined : "global-player-loop-active"}
-            icon={<RetweetOutlined />}
+            icon={loopIcon}
             onClick={toggleLoopMode}
-          >
-            {loopLabel}
-          </Button>
+          />
         </Tooltip>
         <Popover content={queueContent} placement="top" title={t("player.queue")} trigger="click">
           <Button disabled={tracks.length === 0} icon={<UnorderedListOutlined />}>
             {t("player.queue")}
           </Button>
         </Popover>
-        {currentTrack ? (
-          <Button href={currentSrc} icon={<FolderOpenOutlined />} target="_blank">
-            {t("detail.openLocalFile")}
-          </Button>
-        ) : null}
       </Space>
       <audio
         ref={audioRef}
