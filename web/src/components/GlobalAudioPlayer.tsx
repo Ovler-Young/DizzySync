@@ -1,14 +1,16 @@
 import {
+  MinusOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   RetweetOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
   SwapOutlined,
+  UndoOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Button, Empty, Image, List, Popover, Space, Tooltip, Typography } from "antd";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { localFileUrl } from "../api.ts";
 import { useI18n } from "../i18n.tsx";
 
@@ -208,24 +210,13 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
       />
     </span>
   );
-  const loopIcon = (
-    <span className="global-player-icon-stack" aria-hidden="true">
-      <RetweetOutlined
-        className={`global-player-icon-layer ${
-          loopMode === "shuffle"
-            ? "global-player-icon-layer-inactive"
-            : "global-player-icon-layer-active"
-        }`}
-      />
-      <SwapOutlined
-        className={`global-player-icon-layer ${
-          loopMode === "shuffle"
-            ? "global-player-icon-layer-active"
-            : "global-player-icon-layer-inactive"
-        }`}
-      />
-    </span>
-  );
+  const loopIcons: Record<PlaybackLoopMode, ReactNode> = {
+    none: <MinusOutlined />,
+    one: <UndoOutlined />,
+    shuffle: <SwapOutlined />,
+    all: <RetweetOutlined />,
+  };
+  const loopIcon = loopIcons[loopMode];
 
   const queueContent = (
     <List

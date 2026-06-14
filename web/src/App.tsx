@@ -338,16 +338,22 @@ export function App() {
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <StatusCard status={status} />
             <SyncControls disabled={!status?.ready || isRunning} onSyncAll={syncAll} />
-            <AlbumTable
-              albums={albums}
-              loading={loading}
-              onPlay={playAlbumFromList}
-              onRefresh={refreshAll}
-              onShow={(id) => showAlbum(id, true)}
-              onSync={syncAlbum}
-              syncDisabled={Boolean(isRunning)}
-            />
           </Space>
+        ),
+      },
+      {
+        key: "albums",
+        label: t("tabs.albums"),
+        children: (
+          <AlbumTable
+            albums={albums}
+            loading={loading}
+            onPlay={playAlbumFromList}
+            onRefresh={refreshAll}
+            onShow={(id) => showAlbum(id, true)}
+            onSync={syncAlbum}
+            syncDisabled={Boolean(isRunning)}
+          />
         ),
       },
       {

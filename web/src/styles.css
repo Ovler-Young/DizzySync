@@ -532,6 +532,20 @@ li,
   margin: 8px 0;
 }
 
+.album-actions-cell {
+  min-width: 168px;
+  white-space: nowrap;
+}
+
+.album-table-actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.album-table-actions .ant-space-item {
+  flex: 0 0 auto;
+}
+
 .global-player {
   align-items: center;
   backdrop-filter: blur(16px);
@@ -554,15 +568,26 @@ li,
   min-width: 0;
 }
 
-.global-player-cover {
+.global-player-cover,
+.global-player-cover.ant-image,
+.global-player-cover .ant-image-img {
   border-radius: 10px;
   display: block;
-  flex: 0 0 56px;
-  height: 56px;
+  height: clamp(44px, 8vw, 56px);
+  max-height: 56px;
+  max-width: 56px;
+  min-height: 44px;
+  min-width: 44px;
   object-fit: cover;
+  width: clamp(44px, 8vw, 56px);
+}
+
+.global-player-cover,
+.global-player-cover.ant-image {
+  flex: 0 0 clamp(44px, 8vw, 56px);
+  overflow: hidden;
   outline: 1px solid rgba(0, 0, 0, 0.1);
   outline-offset: -1px;
-  width: 56px;
 }
 
 .global-player-cover-placeholder {
