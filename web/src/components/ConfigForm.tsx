@@ -2,6 +2,7 @@ import { SaveOutlined } from "@ant-design/icons";
 import {
   Alert,
   App,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -213,10 +214,16 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
             name="directoryTemplate"
             rules={[{ required: true, message: t("config.directoryTemplateRequired") }]}
           >
-            <Select
-              showSearch={true}
+            <AutoComplete
               options={templateOptions}
-              optionFilterProp="label"
+              filterOption={(inputValue, option) =>
+                String(option?.label ?? "")
+                  .toLowerCase()
+                  .includes(inputValue.toLowerCase()) ||
+                String(option?.value ?? "")
+                  .toLowerCase()
+                  .includes(inputValue.toLowerCase())
+              }
               style={{ width: 360 }}
             />
           </Form.Item>
