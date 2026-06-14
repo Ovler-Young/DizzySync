@@ -107,15 +107,7 @@ impl DizzylabClient {
 
     /// HEAD request to get cover metadata without downloading the body.
     pub async fn head_cover(&self, cover_url: &str, album_id: &str) -> Result<CoverMeta> {
-        let response = self
-            .client
-            .head(cover_url)
-            .header(
-                "Referer",
-                &format!("https://www.dizzylab.net/d/{album_id}/"),
-            )
-            .send()
-            .await?;
+        let response = self.client.head(cover_url).send().await?;
 
         let last_modified = response
             .headers()
@@ -152,15 +144,7 @@ impl DizzylabClient {
             return Err(anyhow!("封面URL为空"));
         }
 
-        let response = self
-            .client
-            .get(cover_url)
-            .header(
-                "Referer",
-                &format!("https://www.dizzylab.net/d/{album_id}/"),
-            )
-            .send()
-            .await?;
+        let response = self.client.get(cover_url).send().await?;
 
         if self.debug {
             debug!("封面下载状态码: {} ({})", response.status(), album_id);

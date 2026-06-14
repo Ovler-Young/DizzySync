@@ -59,6 +59,7 @@ export function AlbumTable({
               alt={`${album.title} cover`}
               className="cover-thumb"
               preview={false}
+              referrerPolicy="no-referrer"
               src={cover}
             />
           ) : (
