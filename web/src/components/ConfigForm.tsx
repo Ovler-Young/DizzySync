@@ -1,4 +1,4 @@
-import { SaveOutlined } from "@ant-design/icons";
+import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import {
   Alert,
   App,
@@ -24,9 +24,13 @@ interface ConfigFormProps {
   onSaved: (config: ConfigResponse, apiKey?: string) => void;
 }
 
-interface ConfigFormValues {
+interface AccountFormValue {
   username: string;
   password?: string;
+}
+
+interface ConfigFormValues {
+  users: AccountFormValue[];
   formats: string[];
   outputDir: string;
   directoryTemplate: string;
@@ -77,8 +81,12 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
     }
 
     return {
-      username: config.config.user.username,
-      password: "",
+      users: (config.config.users.length > 0 ? config.config.users : [config.config.user]).map(
+        (user) => ({
+          username: user.username,
+          password: "",
+        }),
+      ),
       formats: config.config.download.formats,
       outputDir: config.config.paths.output_dir,
       directoryTemplate: config.config.paths.directory_template,
@@ -108,13 +116,13 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
         return;
       }
 
-      const password = values.password?.trim();
       const apiKey = values.apiKey?.trim();
+      const users = values.users.map((user) => ({
+        username: user.username.trim(),
+        ...(user.password?.trim() ? { password: user.password.trim() } : {}),
+      }));
       const payload: UpdateConfigRequest = {
-        user: {
-          username: values.username.trim(),
-          ...(password ? { password } : {}),
-        },
+        users,
         download: {
           formats: values.formats,
         },
@@ -142,7 +150,10 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
       try {
         const nextConfig = await api.updateConfig(payload);
         message.success(t("config.saved"));
-        form.setFieldValue("password", "");
+        form.setFieldValue(
+          "users",
+          values.users.map((user) => ({ ...user, password: "" })),
+        );
         form.setFieldValue("apiKey", "");
         onSaved(nextConfig, apiKey || undefined);
       } catch (caught) {
@@ -168,30 +179,61 @@ export function ConfigForm({ config, mode = "settings", onSaved }: ConfigFormPro
         />
       ) : null}
       <Form form={form} layout="vertical" onFinish={submit}>
+        <Form.List name="users">
+          {(fields, { add, remove }) => (
+            <Space direction="vertical" style={{ width: "100%" }}>
+              {fields.map((field) => {
+                const account = config?.config.users[field.name] ?? config?.config.user;
+                return (
+                  <Space align="start" key={field.key} size="large" wrap={true}>
+                    <Form.Item
+                      {...field}
+                      label={t("config.username")}
+                      name={[field.name, "username"]}
+                      rules={[{ required: true, message: t("config.usernameRequired") }]}
+                    >
+                      <Input autoComplete="username" style={{ width: 280 }} />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      label={t("config.password")}
+                      name={[field.name, "password"]}
+                      rules={[
+                        {
+                          required: isOnboarding && !account?.has_password,
+                          message: t("config.passwordRequired"),
+                        },
+                      ]}
+                    >
+                      <Input.Password
+                        autoComplete="current-password"
+                        placeholder={t("config.passwordPlaceholder")}
+                        style={{ width: 280 }}
+                      />
+                    </Form.Item>
+                    {fields.length > 1 ? (
+                      <Button
+                        danger={true}
+                        icon={<MinusCircleOutlined />}
+                        style={{ marginTop: 30 }}
+                        onClick={() => remove(field.name)}
+                      >
+                        {t("config.removeAccount")}
+                      </Button>
+                    ) : null}
+                  </Space>
+                );
+              })}
+              <Form.Item>
+                <Button icon={<PlusOutlined />} onClick={() => add({ username: "", password: "" })}>
+                  {t("config.addAccount")}
+                </Button>
+              </Form.Item>
+            </Space>
+          )}
+        </Form.List>
+
         <Space align="start" size="large" style={{ width: "100%" }} wrap={true}>
-          <Form.Item
-            label={t("config.username")}
-            name="username"
-            rules={[{ required: true, message: t("config.usernameRequired") }]}
-          >
-            <Input autoComplete="username" style={{ width: 280 }} />
-          </Form.Item>
-          <Form.Item
-            label={t("config.password")}
-            name="password"
-            rules={[
-              {
-                required: isOnboarding && !config?.config.user.has_password,
-                message: t("config.passwordRequired"),
-              },
-            ]}
-          >
-            <Input.Password
-              autoComplete="current-password"
-              placeholder={t("config.passwordPlaceholder")}
-              style={{ width: 280 }}
-            />
-          </Form.Item>
           <Form.Item label={t("config.webPassword")} name="apiKey">
             <Input.Password
               placeholder={t("config.webPasswordPlaceholder")}
