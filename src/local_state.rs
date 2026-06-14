@@ -18,13 +18,18 @@ pub fn annotate_album_list(config: &Config, albums: &mut [DiscListItem]) {
         } else {
             expected_dir
         };
-        album.local = Some(album_state_from_dir(config, &album_dir, None));
+        album.local = Some(album_state_from_dir(
+            config,
+            &album_dir,
+            album.track_count,
+            None,
+        ));
     }
 }
 
 pub fn annotate_disc_info(config: &Config, album: &mut DiscInfo) {
     let album_dir = album_directory_for_disc(config, album);
-    let state = album_state_from_dir(config, &album_dir, Some(album));
+    let state = album_state_from_dir(config, &album_dir, None, Some(album));
     album.local = Some(state);
 
     for (idx, track) in album.tracks.iter_mut().enumerate() {
@@ -40,6 +45,7 @@ pub fn annotate_disc_info(config: &Config, album: &mut DiscInfo) {
 fn album_state_from_dir(
     config: &Config,
     album_dir: &Path,
+    list_expected_tracks: Option<usize>,
     album: Option<&DiscInfo>,
 ) -> LocalAlbumState {
     let directory_exists = album_dir.is_dir();
@@ -61,38 +67,72 @@ fn album_state_from_dir(
         gift_exists = album_dir.join("gift").is_dir();
     }
 
-    let expected_tracks = album.map(|disc| disc.tracks.len()).unwrap_or(0);
-    let downloaded_tracks = album
+    let expected_tracks = album
+        .map(|disc| disc.tracks.len())
+        .filter(|count| *count > 0)
+        .or(list_expected_tracks)
+        .unwrap_or(0);
+    let (downloaded_tracks, complete_tracks) = album
         .map(|disc| {
             disc.tracks
                 .iter()
                 .enumerate()
-                .filter(|(idx, track)| {
-                    track_state_from_dir(config, album_dir, track.title.as_str(), *idx + 1)
-                        .downloaded
+                .map(|(idx, track)| {
+                    track_state_from_dir(config, album_dir, track.title.as_str(), idx + 1)
                 })
-                .count()
+                .fold((0usize, 0usize), |(has_any, complete), state| {
+                    (
+                        has_any + usize::from(state.has_media),
+                        complete + usize::from(state.complete),
+                    )
+                })
         })
-        .unwrap_or(0);
+        .unwrap_or_else(|| {
+            let estimated = if expected_tracks > 0 {
+                audio_files.min(expected_tracks)
+            } else {
+                audio_files
+            };
+            (estimated, 0)
+        });
 
-    let has_audio = audio_files > 0;
-    let has_metadata = directory_exists
-        && (album_dir.join("README.md").exists()
-            || album_dir.join("album.nfo").exists()
-            || has_cover(album_dir));
-    let downloaded = if expected_tracks > 0 {
-        downloaded_tracks >= expected_tracks
+    let has_media = audio_files > 0 || gift_exists;
+    let audio_formats: Vec<_> = config
+        .download
+        .formats
+        .iter()
+        .filter(|format| format.as_str() != "gift")
+        .collect();
+    let audio_formats_complete = !audio_formats.is_empty()
+        && audio_formats
+            .iter()
+            .all(|format| formats.get(format.as_str()).copied().unwrap_or(false));
+    let gift_complete = !config
+        .download
+        .formats
+        .iter()
+        .any(|format| format == "gift")
+        || gift_exists;
+    let complete = if expected_tracks > 0 && album.is_some() {
+        complete_tracks >= expected_tracks && audio_formats_complete && gift_complete
+    } else if expected_tracks > 0 {
+        audio_formats_complete
+            && audio_files >= expected_tracks * audio_formats.len()
+            && gift_complete
     } else {
-        has_audio || has_metadata || gift_exists
+        false
     };
 
     LocalAlbumState {
-        downloaded,
+        downloaded: complete,
         directory_exists,
         path: album_dir.display().to_string(),
         audio_files,
         expected_tracks,
         downloaded_tracks,
+        complete_tracks,
+        has_media,
+        complete,
         gift_exists,
         formats,
     }
@@ -121,10 +161,13 @@ fn track_state_from_dir(
         formats.insert(format.clone(), exists);
     }
 
-    let downloaded = !formats.is_empty() && formats.values().any(|exists| *exists);
+    let has_media = formats.values().any(|exists| *exists);
+    let complete = !formats.is_empty() && formats.values().all(|exists| *exists);
 
     LocalTrackState {
-        downloaded,
+        downloaded: complete,
+        has_media,
+        complete,
         formats,
         paths,
     }
@@ -273,16 +316,17 @@ fn count_audio_files(dir: &Path) -> usize {
                 .path()
                 .extension()
                 .and_then(|ext| ext.to_str())
-                .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "mp3" | "flac"))
+                .map(|ext| is_supported_audio_extension(ext))
                 .unwrap_or(false)
         })
         .count()
 }
 
-fn has_cover(dir: &Path) -> bool {
-    ["jpg", "png", "webp", "gif"]
-        .iter()
-        .any(|ext| dir.join(format!("cover.{ext}")).exists())
+fn is_supported_audio_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "mp3" | "flac" | "wav" | "m4a" | "ogg"
+    )
 }
 
 fn sanitize_filename(name: &str) -> String {

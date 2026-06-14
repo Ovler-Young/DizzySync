@@ -36,8 +36,13 @@ function AlbumActions({ albumId, onSync }: AlbumActionsProps) {
 function renderTrackStatus(track: Track, t: (key: string) => string) {
   const { local } = track;
   const downloaded = local ? local.downloaded : false;
-  const label = downloaded ? t("album.localDownloaded") : t("album.localNotDownloaded");
-  const tag = <Tag color={downloaded ? "success" : "default"}>{label}</Tag>;
+  const hasMedia = local ? local.has_media || local.paths.length > 0 : false;
+  const label = downloaded
+    ? t("album.localDownloaded")
+    : hasMedia
+      ? t("album.localPartial")
+      : t("album.localNotDownloaded");
+  const tag = <Tag color={downloaded ? "success" : hasMedia ? "processing" : "default"}>{label}</Tag>;
   if (!local || local.paths.length === 0) {
     return tag;
   }
