@@ -178,10 +178,11 @@ export function App() {
     setPlayerSelection((previous) => (previous ? { ...previous, index } : previous));
   }, []);
 
-  const playAlbum = useCallback(
+  const startAlbumPlayback = useCallback(
     (album: DiscInfo, selectedTrack?: Track) => {
       const tracks = playableTracksForAlbum(album);
       if (tracks.length === 0) {
+        message.warning(t("album.noPlayableTracks"));
         return false;
       }
       const selectedKey = selectedTrack ? `${selectedTrack.discid}:${selectedTrack.id}` : null;
@@ -202,32 +203,29 @@ export function App() {
       });
       return true;
     },
-    [playRequestId, playableTracksForAlbum],
+    [message, playRequestId, playableTracksForAlbum, t],
   );
 
   const playAlbumTrack = useCallback(
     (album: DiscInfo, track: Track) => {
-      playAlbum(album, track);
+      startAlbumPlayback(album, track);
     },
-    [playAlbum],
+    [startAlbumPlayback],
   );
 
   const playAlbumFromList = useCallback(
     async (id: string) => {
       setLoading(true);
       try {
-        const album = await api.album(id, { refresh: true });
-        setDetail(album);
-        if (!playAlbum(album)) {
-          message.warning(t("player.queueEmpty"));
-        }
+        const album = await api.album(id);
+        startAlbumPlayback(album);
       } catch (caught) {
         message.error(caught instanceof Error ? caught.message : String(caught));
       } finally {
         setLoading(false);
       }
     },
-    [message, playAlbum, t],
+    [message, startAlbumPlayback],
   );
 
   const syncAll = useCallback(async () => {

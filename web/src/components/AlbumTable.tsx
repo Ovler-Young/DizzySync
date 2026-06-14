@@ -13,6 +13,7 @@ import {
   Checkbox,
   Dropdown,
   Image,
+  Input,
   Segmented,
   Space,
   Table,
@@ -56,6 +57,8 @@ type AlbumColumnKey =
   | "actions";
 
 type AlbumViewMode = "table" | "cards";
+type LocalStateFilter = "all" | "downloaded" | "partial" | "missing";
+type PlayableFilter = "all" | "playable" | "not-playable";
 type CheckboxValueType = string | number | boolean;
 
 const defaultVisibleColumns: AlbumColumnKey[] = [
@@ -72,6 +75,10 @@ function hasPartialLocalState(album: DiscListItem) {
     return false;
   }
   return album.local.has_media || album.local.downloaded_tracks > 0 || album.local.audio_files > 0;
+}
+
+function hasPlayableLocalAudio(album: DiscListItem) {
+  return Boolean(album.local && (album.local.audio_files > 0 || album.local.has_media));
 }
 
 function localStateValue(album: DiscListItem) {
@@ -166,22 +173,30 @@ function AlbumActions({ album, syncDisabled, onPlay, onShow, onSync }: AlbumActi
   const playAlbum = useCallback(() => onPlay(album.id), [album.id, onPlay]);
   const showAlbum = useCallback(() => onShow(album.id), [album.id, onShow]);
   const syncAlbum = useCallback(() => onSync(album.id), [album.id, onSync]);
-  const playable = Boolean(
-    album.local && (album.local.downloaded_tracks > 0 || album.local.audio_files > 0),
-  );
+  const playable = hasPlayableLocalAudio(album);
 
   return (
-    <Space wrap={true}>
-      <Button disabled={!playable} icon={<PlayCircleOutlined />} onClick={playAlbum}>
-        {t("album.play")}
-      </Button>
-      <Button icon={<EyeOutlined />} onClick={showAlbum}>
-        {t("album.detail")}
-      </Button>
+    <Space wrap={true} size={4}>
+      <Tooltip title={t("album.detail")}>
+        <Button aria-label={t("album.detail")} icon={<EyeOutlined />} onClick={showAlbum} />
+      </Tooltip>
+      <Tooltip title={t("album.play")}>
+        <Button
+          aria-label={t("album.play")}
+          disabled={!playable}
+          icon={<PlayCircleOutlined />}
+          onClick={playAlbum}
+        />
+      </Tooltip>
       {album.local?.downloaded ? null : (
-        <Button disabled={syncDisabled} icon={<SyncOutlined />} onClick={syncAlbum}>
-          {t("album.sync")}
-        </Button>
+        <Tooltip title={t("album.sync")}>
+          <Button
+            aria-label={t("album.sync")}
+            disabled={syncDisabled}
+            icon={<SyncOutlined />}
+            onClick={syncAlbum}
+          />
+        </Tooltip>
       )}
     </Space>
   );
@@ -213,6 +228,9 @@ export function AlbumTable({
   const { t } = useI18n();
   const [viewMode, setViewMode] = useState<AlbumViewMode>("table");
   const [visibleColumns, setVisibleColumns] = useState<AlbumColumnKey[]>(defaultVisibleColumns);
+  const [localFilter, setLocalFilter] = useState<LocalStateFilter>("all");
+  const [playableFilter, setPlayableFilter] = useState<PlayableFilter>("all");
+  const [textFilter, setTextFilter] = useState("");
 
   const columnOptions = useMemo(
     () => [
@@ -236,7 +254,7 @@ export function AlbumTable({
         title: t("album.cover"),
         className: "album-cover-cell",
         dataIndex: "cover",
-        width: 56,
+        width: 88,
         render: (_, album) => <AlbumCover album={album} />,
       },
       title: {
@@ -299,7 +317,7 @@ export function AlbumTable({
       actions: {
         title: t("album.actions"),
         key: "actions",
-        width: 180,
+        width: 132,
         render: (_, album) => (
           <AlbumActions
             album={album}
@@ -318,6 +336,28 @@ export function AlbumTable({
     () => visibleColumns.map((key) => allColumns[key]).filter(Boolean),
     [allColumns, visibleColumns],
   );
+
+  const filteredAlbums = useMemo(() => {
+    const normalizedTextFilter = textFilter.trim().toLowerCase();
+    return albums.filter((album) => {
+      if (localFilter !== "all" && localStateValue(album) !== localFilter) {
+        return false;
+      }
+      if (playableFilter === "playable" && !hasPlayableLocalAudio(album)) {
+        return false;
+      }
+      if (playableFilter === "not-playable" && hasPlayableLocalAudio(album)) {
+        return false;
+      }
+      if (normalizedTextFilter) {
+        const searchable = [album.title, album.label, album.id, ...(album.tags ?? [])]
+          .join(" ")
+          .toLowerCase();
+        return searchable.includes(normalizedTextFilter);
+      }
+      return true;
+    });
+  }, [albums, localFilter, playableFilter, textFilter]);
 
   const handleColumnsChange = useCallback((values: CheckboxValueType[]) => {
     const selected = values as AlbumColumnKey[];
@@ -357,12 +397,44 @@ export function AlbumTable({
     </Space>
   );
 
+  const quickFilters = (
+    <Space className="album-quick-filters" wrap={true}>
+      <Segmented
+        onChange={(value) => setLocalFilter(value as LocalStateFilter)}
+        options={[
+          { label: t("album.filterAll"), value: "all" },
+          { label: t("album.localDownloaded"), value: "downloaded" },
+          { label: t("album.localPartial"), value: "partial" },
+          { label: t("album.localNotDownloaded"), value: "missing" },
+        ]}
+        value={localFilter}
+      />
+      <Segmented
+        onChange={(value) => setPlayableFilter(value as PlayableFilter)}
+        options={[
+          { label: t("album.filterAllPlayable"), value: "all" },
+          { label: t("album.filterPlayable"), value: "playable" },
+          { label: t("album.filterNotPlayable"), value: "not-playable" },
+        ]}
+        value={playableFilter}
+      />
+      <Input.Search
+        allowClear={true}
+        className="album-text-filter"
+        placeholder={t("album.filterSearchPlaceholder")}
+        value={textFilter}
+        onChange={(event) => setTextFilter(event.target.value)}
+      />
+    </Space>
+  );
+
   return (
     <Card title={t("album.title")} extra={toolbar}>
+      {quickFilters}
       {viewMode === "table" ? (
         <Table
           columns={columns}
-          dataSource={albums}
+          dataSource={filteredAlbums}
           loading={loading}
           pagination={{ pageSize: 10, showSizeChanger: true }}
           rowKey="id"
@@ -370,45 +442,40 @@ export function AlbumTable({
         />
       ) : (
         <div className="album-card-grid" aria-busy={loading}>
-          {albums.map((album) => (
+          {filteredAlbums.map((album) => (
             <Card
               className="album-card"
               key={album.id}
               hoverable={true}
               cover={<AlbumCover album={album} large={true} />}
               actions={[
-                <Button
-                  key="play"
-                  disabled={
-                    !(
-                      album.local &&
-                      (album.local.downloaded_tracks > 0 || album.local.audio_files > 0)
-                    )
-                  }
-                  type="link"
-                  icon={<PlayCircleOutlined />}
-                  onClick={() => onPlay(album.id)}
-                >
-                  {t("album.play")}
-                </Button>,
-                <Button
-                  key="detail"
-                  type="link"
-                  icon={<EyeOutlined />}
-                  onClick={() => onShow(album.id)}
-                >
-                  {t("album.detail")}
-                </Button>,
-                album.local?.downloaded ? null : (
+                <Tooltip key="detail" title={t("album.detail")}>
                   <Button
-                    key="sync"
-                    disabled={syncDisabled}
                     type="link"
-                    icon={<SyncOutlined />}
-                    onClick={() => onSync(album.id)}
-                  >
-                    {t("album.sync")}
-                  </Button>
+                    icon={<EyeOutlined />}
+                    aria-label={t("album.detail")}
+                    onClick={() => onShow(album.id)}
+                  />
+                </Tooltip>,
+                <Tooltip key="play" title={t("album.play")}>
+                  <Button
+                    aria-label={t("album.play")}
+                    disabled={!hasPlayableLocalAudio(album)}
+                    type="link"
+                    icon={<PlayCircleOutlined />}
+                    onClick={() => onPlay(album.id)}
+                  />
+                </Tooltip>,
+                album.local?.downloaded ? null : (
+                  <Tooltip key="sync" title={t("album.sync")}>
+                    <Button
+                      aria-label={t("album.sync")}
+                      disabled={syncDisabled}
+                      type="link"
+                      icon={<SyncOutlined />}
+                      onClick={() => onSync(album.id)}
+                    />
+                  </Tooltip>
                 ),
               ].filter(Boolean)}
             >

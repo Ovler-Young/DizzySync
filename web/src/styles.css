@@ -58,11 +58,11 @@ body {
 }
 
 .cover-thumb {
-  border-radius: 8px;
+  border-radius: 10px;
   display: block;
-  height: 44px;
+  height: 72px;
   object-fit: cover;
-  width: 44px;
+  width: 72px;
 }
 
 .cover-card {
@@ -77,7 +77,7 @@ body {
 }
 
 .album-cover-cell {
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .guide-list {
@@ -219,6 +219,16 @@ body {
   display: grid;
   gap: 8px;
   grid-template-columns: 1fr 1fr;
+}
+
+.album-quick-filters {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.album-text-filter {
+  min-width: 260px;
+  width: min(360px, 100%);
 }
 
 .album-card-grid {

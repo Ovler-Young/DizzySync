@@ -24,12 +24,23 @@ function AlbumActions({ albumId, onSync }: AlbumActionsProps) {
 
   return (
     <Space>
-      <Button href={albumUrl} icon={<ExportOutlined />} rel="noopener noreferrer" target="_blank">
-        {t("detail.openInDizzylab")}
-      </Button>
-      <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
-        {t("detail.sync")}
-      </Button>
+      <Tooltip title={t("detail.openInDizzylab")}>
+        <Button
+          aria-label={t("detail.openInDizzylab")}
+          href={albumUrl}
+          icon={<ExportOutlined />}
+          rel="noopener noreferrer"
+          target="_blank"
+        />
+      </Tooltip>
+      <Tooltip title={t("detail.sync")}>
+        <Button
+          aria-label={t("detail.sync")}
+          icon={<SyncOutlined />}
+          type="primary"
+          onClick={syncAlbum}
+        />
+      </Tooltip>
     </Space>
   );
 }
@@ -83,15 +94,16 @@ function TrackActions({ album, currentTrackKey, track, onPlayTrack }: TrackActio
 
   return (
     <Space className="track-actions" wrap={true}>
-      <Button
-        disabled={!playable}
-        icon={<PlayCircleOutlined />}
-        size="small"
-        type={isCurrent ? "primary" : "default"}
-        onClick={playTrack}
-      >
-        {isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
-      </Button>
+<Tooltip title={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}>
+        <Button
+          aria-label={isCurrent ? t("detail.selectedTrack") : t("detail.playTrack")}
+          disabled={!playable}
+          icon={<PlayCircleOutlined />}
+          size="small"
+          type={isCurrent ? "primary" : "default"}
+          onClick={playTrack}
+        />
+      </Tooltip>
     </Space>
   );
 }

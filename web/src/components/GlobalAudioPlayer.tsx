@@ -287,9 +287,7 @@ export function GlobalAudioPlayer({ selection, onSelectIndex }: GlobalAudioPlaye
           />
         </Tooltip>
         <Popover content={queueContent} placement="top" title={t("player.queue")} trigger="click">
-          <Button disabled={tracks.length === 0} icon={<UnorderedListOutlined />}>
-            {t("player.queue")}
-          </Button>
+          <Button aria-label={t("player.queue")} disabled={tracks.length === 0} icon={<UnorderedListOutlined />} />
         </Popover>
       </Space>
       <audio
