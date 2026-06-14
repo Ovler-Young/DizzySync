@@ -59,9 +59,25 @@ body {
 
 .cover-thumb {
   border-radius: 8px;
-  height: 48px;
+  display: block;
+  height: 44px;
   object-fit: cover;
-  width: 48px;
+  width: 44px;
+}
+
+.cover-card {
+  aspect-ratio: 1 / 1;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.cover-placeholder {
+  background: linear-gradient(135deg, #f1f5f9, #e5e7eb);
+}
+
+.album-cover-cell {
+  padding: 8px 10px;
 }
 
 .guide-list {
@@ -86,18 +102,83 @@ body {
   color: rgba(0, 0, 0, 0.45);
 }
 
-.status-descriptions {
-  overflow-x: auto;
+.status-card .ant-card-body {
+  padding-top: 16px;
 }
 
-.status-descriptions .ant-descriptions-view {
-  min-width: 720px;
+.status-metric-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
-.status-descriptions .ant-descriptions-item-label,
-.status-descriptions .ant-descriptions-item-content,
-.status-descriptions .ant-tag {
+.status-metric {
+  align-items: flex-start;
+  background: #fafafa;
+  border: 1px solid rgba(5, 5, 5, 0.06);
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.status-metric-green {
+  background: linear-gradient(135deg, rgba(82, 196, 26, 0.12), #fff);
+}
+
+.status-metric-blue {
+  background: linear-gradient(135deg, rgba(22, 119, 255, 0.12), #fff);
+}
+
+.status-metric-orange {
+  background: linear-gradient(135deg, rgba(250, 140, 22, 0.14), #fff);
+}
+
+.status-metric-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(5, 5, 5, 0.06);
+  border-radius: 12px;
+  color: #635bff;
+  display: flex;
+  flex: 0 0 36px;
+  font-size: 18px;
+  height: 36px;
+  justify-content: center;
+}
+
+.status-metric-body {
+  min-width: 0;
+}
+
+.status-metric-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.status-metric-value {
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-metric-meta {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-alert {
+  margin-top: 12px;
 }
 
 .guide-section-active > .ant-collapse-header {
@@ -128,4 +209,33 @@ body {
 
 .app-footer a {
   white-space: nowrap;
+}
+
+.album-column-menu {
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  max-width: 260px;
+}
+
+.album-column-checkboxes {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.album-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.album-card .ant-card-cover {
+  overflow: hidden;
+}
+
+.album-card .ant-card-body {
+  padding: 12px;
+}
+
+.album-card .ant-card-actions > li {
+  margin: 8px 0;
 }
