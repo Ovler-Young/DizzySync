@@ -3,6 +3,8 @@ use crate::config::Config;
 use crate::downloader::Downloader;
 use crate::types::{DiscInfo, DiscListItem, UserInfo};
 use anyhow::{anyhow, Result};
+use chrono::Utc;
+use cron::Schedule;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, Request, StatusCode};
@@ -12,6 +14,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, RwLock};
@@ -32,6 +35,7 @@ struct ApiState {
     config: Arc<RwLock<Config>>,
     config_path: String,
     job: Arc<Mutex<JobState>>,
+    schedule: Arc<RwLock<ScheduleState>>,
     last_error: Arc<RwLock<Option<String>>>,
 }
 
@@ -42,6 +46,15 @@ enum JobState {
     Running { kind: String, started_at: u64 },
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ScheduleState {
+    enabled: bool,
+    cron: String,
+    next_run: Option<u64>,
+    last_run: Option<u64>,
+    last_error: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct StatusResponse {
     status: &'static str,
@@ -50,6 +63,7 @@ struct StatusResponse {
     requires_auth: bool,
     user: Option<UserInfo>,
     job: JobState,
+    schedule: ScheduleState,
     last_error: Option<String>,
 }
 
@@ -71,6 +85,7 @@ struct PublicConfig {
     download: PublicDownloadConfig,
     paths: PublicPathsConfig,
     behavior: PublicBehaviorConfig,
+    schedule: PublicScheduleConfig,
     api: PublicApiConfig,
 }
 
@@ -103,6 +118,12 @@ struct PublicBehaviorConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct PublicScheduleConfig {
+    enabled: bool,
+    cron: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct PublicApiConfig {
     bind: String,
     has_api_key: bool,
@@ -115,6 +136,7 @@ struct UpdateConfigRequest {
     download: Option<UpdateDownloadConfig>,
     paths: Option<UpdatePathsConfig>,
     behavior: Option<UpdateBehaviorConfig>,
+    schedule: Option<UpdateScheduleConfig>,
     api: Option<UpdateApiConfig>,
 }
 
@@ -147,6 +169,12 @@ struct UpdateBehaviorConfig {
 }
 
 #[derive(Debug, Deserialize)]
+struct UpdateScheduleConfig {
+    enabled: Option<bool>,
+    cron: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct UpdateApiConfig {
     api_key: Option<String>,
 }
@@ -175,6 +203,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         config: Arc::new(RwLock::new(config.clone())),
         config_path: options.config_path,
         job: Arc::new(Mutex::new(JobState::Idle)),
+        schedule: Arc::new(RwLock::new(schedule_state_from_config(&config))),
         last_error: Arc::new(RwLock::new(None)),
     };
 
@@ -182,6 +211,8 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
         error!("API 服务启动时登录失败: {}", e);
         *state.last_error.write().await = Some(e.to_string());
     }
+
+    start_scheduler(state.clone());
 
     let bind = config.api.bind.clone();
     let web_root = config.api.web_root.clone();
@@ -226,6 +257,7 @@ async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
         requires_auth: !config.api.api_key.is_empty(),
         user: state.user.read().await.clone(),
         job: state.job.lock().await.clone(),
+        schedule: state.schedule.read().await.clone(),
         last_error: state.last_error.read().await.clone(),
     })
 }
@@ -254,6 +286,7 @@ async fn update_config(
     apply_config_update(&mut next_config, req);
     validate_credentials(&next_config).map_err(ApiError::bad_request)?;
     validate_formats(&next_config).map_err(ApiError::bad_request)?;
+    validate_schedule(&next_config).map_err(ApiError::bad_request)?;
 
     // Validate the new credentials before committing the config to memory or disk.
     let next_client = DizzylabClient::new(next_config.behavior.debug)?;
@@ -264,10 +297,11 @@ async fn update_config(
     let next_user = next_client.get_my_info(&next_token).await.ok();
 
     next_config.save_to_file(&state.config_path)?;
-    *state.config.write().await = next_config;
+    *state.config.write().await = next_config.clone();
     *state.client.write().await = Some(next_client);
     *state.token.write().await = Some(next_token);
     *state.user.write().await = next_user;
+    *state.schedule.write().await = schedule_state_from_config(&next_config);
 
     let config = state.config.read().await.clone();
     Ok(Json(ConfigResponse {
@@ -312,6 +346,7 @@ async fn bootstrap_config(
     *state.client.write().await = None;
     *state.token.write().await = None;
     *state.user.write().await = None;
+    *state.schedule.write().await = schedule_state_from_config(&config);
 
     Ok(Json(ConfigResponse {
         config_path: state.config_path.clone(),
@@ -521,6 +556,15 @@ fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) {
         }
     }
 
+    if let Some(schedule) = req.schedule {
+        if let Some(enabled) = schedule.enabled {
+            config.schedule.enabled = enabled;
+        }
+        if let Some(cron) = schedule.cron {
+            config.schedule.cron = cron.trim().to_string();
+        }
+    }
+
     if let Some(api) = req.api {
         if let Some(api_key) = api.api_key {
             config.api.api_key = api_key;
@@ -537,6 +581,19 @@ pub fn validate_credentials(config: &Config) -> Result<()> {
 
 fn has_credentials(config: &Config) -> bool {
     !config.user.username.trim().is_empty() && !config.user.password.trim().is_empty()
+}
+
+pub fn validate_schedule(config: &Config) -> Result<()> {
+    if !config.schedule.enabled {
+        return Ok(());
+    }
+
+    let cron = config.schedule.cron.trim();
+    if cron.is_empty() {
+        return Err(anyhow!("启用自动同步时必须设置 cron 表达式"));
+    }
+    Schedule::from_str(cron).map_err(|e| anyhow!("无效的 cron 表达式: {e}"))?;
+    Ok(())
 }
 
 pub fn validate_formats(config: &Config) -> Result<()> {
@@ -593,12 +650,139 @@ impl PublicConfig {
                 debug: config.behavior.debug,
                 metadata_only: config.behavior.metadata_only,
             },
+            schedule: PublicScheduleConfig {
+                enabled: config.schedule.enabled,
+                cron: config.schedule.cron.clone(),
+            },
             api: PublicApiConfig {
                 bind: config.api.bind.clone(),
                 has_api_key: !config.api.api_key.is_empty(),
                 web_root: config.api.web_root.display().to_string(),
             },
         }
+    }
+}
+
+fn start_scheduler(state: ApiState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            interval.tick().await;
+
+            let config = state.config.read().await.clone();
+            if !config.schedule.enabled {
+                continue;
+            }
+
+            let schedule = match Schedule::from_str(config.schedule.cron.trim()) {
+                Ok(schedule) => schedule,
+                Err(e) => {
+                    let message = format!("无效的 cron 表达式: {e}");
+                    error!("{}", message);
+                    state.schedule.write().await.last_error = Some(message);
+                    continue;
+                }
+            };
+
+            let now = Utc::now();
+            let now_ts = now.timestamp() as u64;
+            let next_run_ts = {
+                let mut schedule_state = state.schedule.write().await;
+                schedule_state.enabled = config.schedule.enabled;
+                schedule_state.cron = config.schedule.cron.clone();
+                match schedule_state.next_run {
+                    Some(next_run) => next_run,
+                    None => {
+                        let Some(next_run) = schedule.upcoming(Utc).next() else {
+                            continue;
+                        };
+                        let next_run = next_run.timestamp() as u64;
+                        schedule_state.next_run = Some(next_run);
+                        next_run
+                    }
+                }
+            };
+
+            if now_ts < next_run_ts {
+                continue;
+            }
+
+            let next_after_fire = schedule
+                .upcoming(Utc)
+                .find(|datetime| datetime.timestamp() as u64 > now_ts)
+                .map(|datetime| datetime.timestamp() as u64);
+
+            {
+                let mut schedule_state = state.schedule.write().await;
+                schedule_state.next_run = next_after_fire;
+            }
+
+            let mut job = state.job.lock().await;
+            if matches!(*job, JobState::Running { .. }) {
+                info!("自动同步已到触发时间，但已有同步任务正在运行，跳过本次触发");
+                continue;
+            }
+            *job = JobState::Running {
+                kind: "scheduled".to_string(),
+                started_at: now_unix(),
+            };
+            drop(job);
+
+            let run_state = state.clone();
+            let job_state = state.job.clone();
+            let schedule_state = state.schedule.clone();
+            let last_error = state.last_error.clone();
+            tokio::spawn(async move {
+                let started_at = now_unix();
+                let current = schedule_state.read().await.clone();
+                *schedule_state.write().await = ScheduleState {
+                    last_run: Some(started_at),
+                    ..current
+                };
+
+                match run_sync_job(run_state, None).await {
+                    Ok(()) => {
+                        let current = schedule_state.read().await.clone();
+                        *schedule_state.write().await = ScheduleState {
+                            last_error: None,
+                            ..current
+                        };
+                    }
+                    Err(e) => {
+                        let message = e.to_string();
+                        error!("自动同步任务失败: {}", message);
+                        *last_error.write().await = Some(message.clone());
+                        let current = schedule_state.read().await.clone();
+                        *schedule_state.write().await = ScheduleState {
+                            last_error: Some(message),
+                            ..current
+                        };
+                    }
+                }
+                *job_state.lock().await = JobState::Idle;
+            });
+        }
+    });
+}
+
+fn schedule_state_from_config(config: &Config) -> ScheduleState {
+    let next_run = if config.schedule.enabled {
+        Schedule::from_str(config.schedule.cron.trim())
+            .ok()
+            .and_then(|schedule| schedule.upcoming(Utc).next())
+            .map(|datetime| datetime.timestamp() as u64)
+    } else {
+        None
+    };
+
+    ScheduleState {
+        enabled: config.schedule.enabled,
+        cron: config.schedule.cron.clone(),
+        next_run,
+        last_run: None,
+        last_error: None,
     }
 }
 
