@@ -52,7 +52,12 @@ export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerP
       {album ? (
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
           {album.cover ? (
-            <Image alt={`${album.title} cover`} src={album.cover} width={180} />
+            <Image
+              alt={`${album.title} cover`}
+              referrerPolicy="no-referrer"
+              src={album.cover}
+              width={180}
+            />
           ) : null}
           <Descriptions bordered={true} column={1} size="small">
             <Descriptions.Item label="ID">{album.id}</Descriptions.Item>
