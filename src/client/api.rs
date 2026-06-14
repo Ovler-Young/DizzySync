@@ -68,7 +68,11 @@ impl DizzylabClient {
                 offset + PAGE_SIZE,
                 token
             );
-            debug!("请求专辑列表: {}", url);
+            debug!(
+                "请求专辑列表: getmydisc offset={} r={}",
+                offset,
+                offset + PAGE_SIZE
+            );
 
             let response = self.client.get(&url).send().await?;
             let text = self

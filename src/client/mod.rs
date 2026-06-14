@@ -38,7 +38,7 @@ impl DizzylabClient {
     ) -> Result<Option<String>> {
         use tokio::io::AsyncWriteExt;
 
-        debug!("下载: {}", url);
+        debug!("下载: {}", redact_url_for_log(url));
         let mut response = self.client.get(url).send().await?;
 
         if !response.status().is_success() {
@@ -86,7 +86,7 @@ impl DizzylabClient {
         if response.status().is_redirection() {
             if let Some(location) = response.headers().get("location") {
                 let redirect_url = location.to_str()?.to_string();
-                debug!("重定向到: {}", redirect_url);
+                debug!("重定向到: {}", redact_url_for_log(&redirect_url));
                 self.stream_to_file(&redirect_url, dest).await?;
                 return Ok(());
             }
@@ -183,9 +183,33 @@ impl DizzylabClient {
         let text = response.text().await?;
 
         if self.debug {
-            debug!("=== HTTP [{context}] status={status} body={text} ===");
+            debug!(
+                "=== HTTP [{context}] status={status} body={} ===",
+                redact_text_for_log(&text)
+            );
         }
 
         Ok(text)
     }
+}
+
+fn redact_url_for_log(url: &str) -> String {
+    redact_text_for_log(url)
+}
+
+fn redact_text_for_log(text: &str) -> String {
+    let mut redacted = text.to_string();
+    for pattern in [
+        r"(?i)(token=)[^\s&]+",
+        r"(?i)(api[_-]?key=)[^\s&]+",
+        r"(?i)(password=)[^\s&]+",
+        r#"(?i)("token"\s*:\s*)"[^"]*""#,
+        r#"(?i)("api[_-]?key"\s*:\s*)"[^"]*""#,
+        r#"(?i)("password"\s*:\s*)"[^"]*""#,
+    ] {
+        if let Ok(regex) = regex::Regex::new(pattern) {
+            redacted = regex.replace_all(&redacted, "$1<redacted>").into_owned();
+        }
+    }
+    redacted
 }
