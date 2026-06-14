@@ -163,10 +163,12 @@ impl Config {
         );
 
         if let Ok(output_dir) = std::env::var("DIZZYSYNC_OUTPUT_DIR") {
-            if !fill_empty_only || self.paths.output_dir.as_os_str().is_empty() {
-                self.paths.output_dir = PathBuf::from(output_dir);
-            }
+            // The deployment-provided output directory is authoritative so the Web UI
+            // cannot drift away from mounted storage such as Docker's /data volume.
+            self.paths.output_dir = PathBuf::from(output_dir);
         }
+
+        self.behavior.max_concurrent_albums = self.behavior.max_concurrent_albums.max(1);
     }
 
     pub fn accounts(&self) -> Vec<UserConfig> {
@@ -188,7 +190,9 @@ impl Config {
 
     pub fn load_or_bootstrap(path: &str) -> Result<Self> {
         if std::path::Path::new(path).exists() {
-            return Self::load_from_file(path);
+            let mut config = Self::load_from_file(path)?;
+            config.apply_env_overrides(true);
+            return Ok(config);
         }
 
         let mut config = Self::default();
