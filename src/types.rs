@@ -1,4 +1,24 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAlbumState {
+    pub downloaded: bool,
+    pub directory_exists: bool,
+    pub path: String,
+    pub audio_files: usize,
+    pub expected_tracks: usize,
+    pub downloaded_tracks: usize,
+    pub gift_exists: bool,
+    pub formats: BTreeMap<String, bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalTrackState {
+    pub downloaded: bool,
+    pub formats: BTreeMap<String, bool>,
+    pub paths: Vec<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
@@ -15,6 +35,8 @@ pub struct DiscListItem {
     pub cover: String,
     #[serde(default)]
     pub labelid: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<LocalAlbumState>,
 }
 
 /// Full disc info returned by getthisdicsinfo/
@@ -50,6 +72,8 @@ pub struct DiscInfo {
     pub tags: Vec<String>,
     #[serde(default)]
     pub tracks: Vec<Track>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<LocalAlbumState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,4 +91,6 @@ pub struct Track {
     pub url: String,
     #[serde(default)]
     pub coverurl: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<LocalTrackState>,
 }

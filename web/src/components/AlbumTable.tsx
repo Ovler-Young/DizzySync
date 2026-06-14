@@ -1,5 +1,5 @@
 import { EyeOutlined, ReloadOutlined, SyncOutlined } from "@ant-design/icons";
-import { Button, Card, Image, Space, Table, Typography } from "antd";
+import { Button, Card, Image, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useMemo } from "react";
 import { useI18n } from "../i18n.tsx";
@@ -19,6 +19,33 @@ interface AlbumActionsProps {
   syncDisabled: boolean;
   onShow: (id: string) => void;
   onSync: (id: string) => void;
+}
+
+function hasPartialLocalState(album: DiscListItem) {
+  if (!album.local) {
+    return false;
+  }
+  return album.local.downloaded_tracks > 0 || album.local.audio_files > 0;
+}
+
+function localStateColor(album: DiscListItem) {
+  if (album.local?.downloaded) {
+    return "success";
+  }
+  if (hasPartialLocalState(album)) {
+    return "processing";
+  }
+  return "default";
+}
+
+function localStateLabel(album: DiscListItem, t: (key: string) => string) {
+  if (album.local?.downloaded) {
+    return t("album.localDownloaded");
+  }
+  if (hasPartialLocalState(album)) {
+    return t("album.localPartial");
+  }
+  return t("album.localNotDownloaded");
 }
 
 function AlbumActions({ albumId, syncDisabled, onShow, onSync }: AlbumActionsProps) {
@@ -81,6 +108,15 @@ export function AlbumTable({
         title: t("album.label"),
         dataIndex: "label",
         sorter: (left, right) => left.label.localeCompare(right.label),
+      },
+      {
+        title: t("album.local"),
+        key: "local",
+        width: 150,
+        render: (_, album) => {
+          const tag = <Tag color={localStateColor(album)}>{localStateLabel(album, t)}</Tag>;
+          return album.local?.path ? <Tooltip title={album.local.path}>{tag}</Tooltip> : tag;
+        },
       },
       {
         title: t("album.actions"),

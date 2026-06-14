@@ -3,6 +3,7 @@ mod archive;
 mod client;
 mod config;
 mod downloader;
+mod local_state;
 mod metadata;
 mod types;
 

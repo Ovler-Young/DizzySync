@@ -1,6 +1,7 @@
 use crate::client::DizzylabClient;
 use crate::config::{Config, UserConfig};
 use crate::downloader::Downloader;
+use crate::local_state;
 use crate::types::{DiscInfo, DiscListItem, UserInfo};
 use anyhow::{anyhow, Result};
 use axum::body::Body;
@@ -608,6 +609,7 @@ async fn list_albums(
     headers: HeaderMap,
 ) -> Result<Json<Vec<DiscListItem>>, ApiError> {
     authorize(&state, &headers).await?;
+    let config = state.config.read().await.clone();
     let sessions = ensure_logged_in(&state).await?;
     let mut albums_by_id = std::collections::BTreeMap::new();
     for session in sessions {
@@ -615,7 +617,8 @@ async fn list_albums(
             albums_by_id.entry(album.id.clone()).or_insert(album);
         }
     }
-    let albums = albums_by_id.into_values().collect::<Vec<_>>();
+    let mut albums = albums_by_id.into_values().collect::<Vec<_>>();
+    local_state::annotate_album_list(&config, &mut albums);
     push_log(
         &state,
         "info",
@@ -635,7 +638,11 @@ async fn get_album(
     let mut last_error = None;
     for session in sessions {
         match session.client.get_disc_info(&id, &session.token).await {
-            Ok(album) => return Ok(Json(album)),
+            Ok(mut album) => {
+                let config = state.config.read().await.clone();
+                local_state::annotate_disc_info(&config, &mut album);
+                return Ok(Json(album));
+            }
             Err(e) => last_error = Some(e),
         }
     }
