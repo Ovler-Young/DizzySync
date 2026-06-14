@@ -28,11 +28,20 @@ pub fn annotate_disc_info(config: &Config, album: &mut DiscInfo) {
     album.local = Some(state);
 
     for (idx, track) in album.tracks.iter_mut().enumerate() {
-        track.local = Some(track_state_from_dir(config, &album_dir, track.title.as_str(), idx + 1));
+        track.local = Some(track_state_from_dir(
+            config,
+            &album_dir,
+            track.title.as_str(),
+            idx + 1,
+        ));
     }
 }
 
-fn album_state_from_dir(config: &Config, album_dir: &Path, album: Option<&DiscInfo>) -> LocalAlbumState {
+fn album_state_from_dir(
+    config: &Config,
+    album_dir: &Path,
+    album: Option<&DiscInfo>,
+) -> LocalAlbumState {
     let directory_exists = album_dir.is_dir();
     let mut audio_files = 0usize;
     let mut gift_exists = false;
@@ -59,7 +68,8 @@ fn album_state_from_dir(config: &Config, album_dir: &Path, album: Option<&DiscIn
                 .iter()
                 .enumerate()
                 .filter(|(idx, track)| {
-                    track_state_from_dir(config, album_dir, track.title.as_str(), *idx + 1).downloaded
+                    track_state_from_dir(config, album_dir, track.title.as_str(), *idx + 1)
+                        .downloaded
                 })
                 .count()
         })
