@@ -1,21 +1,24 @@
 import { KeyOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, App as AntApp, Button, Card, Input, Layout, Space, Tabs, Typography } from "antd";
+import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiKeyStorageKey } from "./api.ts";
-import AlbumDetailDrawer from "./components/AlbumDetailDrawer.tsx";
-import AlbumTable from "./components/AlbumTable.tsx";
-import ConfigForm from "./components/ConfigForm.tsx";
-import ConfigGuide from "./components/ConfigGuide.tsx";
-import StatusCard from "./components/StatusCard.tsx";
-import SyncControls from "./components/SyncControls.tsx";
+import { AlbumDetailDrawer } from "./components/AlbumDetailDrawer.tsx";
+import { AlbumTable } from "./components/AlbumTable.tsx";
+import { ConfigForm } from "./components/ConfigForm.tsx";
+import { ConfigGuide } from "./components/ConfigGuide.tsx";
+import { StatusCard } from "./components/StatusCard.tsx";
+import { SyncControls } from "./components/SyncControls.tsx";
 import type { ConfigResponse, DiscInfo, DiscListItem, StatusResponse } from "./types.ts";
 
 const { Header } = Layout;
 const { Title, Text } = Typography;
 
-export default function App() {
+export function App() {
   const { message } = AntApp.useApp();
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(apiKeyStorageKey) ?? "");
+  const [apiKey, setApiKey] = useState(
+    () => globalThis.localStorage.getItem(apiKeyStorageKey) ?? "",
+  );
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [albums, setAlbums] = useState<DiscListItem[]>([]);
@@ -28,9 +31,9 @@ export default function App() {
   const saveApiKey = useCallback((value: string) => {
     setApiKey(value);
     if (value.trim()) {
-      localStorage.setItem(apiKeyStorageKey, value.trim());
+      globalThis.localStorage.setItem(apiKeyStorageKey, value.trim());
     } else {
-      localStorage.removeItem(apiKeyStorageKey);
+      globalThis.localStorage.removeItem(apiKeyStorageKey);
     }
   }, []);
 
@@ -59,7 +62,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshAll();
+    refreshAll().catch((caught: unknown) => {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    });
   }, [refreshAll]);
 
   useEffect(() => {
@@ -67,11 +72,13 @@ export default function App() {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      void loadStatus();
+    const timer = globalThis.setInterval(() => {
+      loadStatus().catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      });
     }, 2500);
 
-    return () => window.clearInterval(timer);
+    return () => globalThis.clearInterval(timer);
   }, [isRunning, loadStatus]);
 
   const showAlbum = useCallback(
@@ -111,6 +118,27 @@ export default function App() {
     [loadStatus, message],
   );
 
+  const handleConfigSaved = useCallback(
+    (nextConfig: ConfigResponse) => {
+      setConfig(nextConfig);
+      loadStatus().catch((caught: unknown) => {
+        message.error(caught instanceof Error ? caught.message : String(caught));
+      });
+    },
+    [loadStatus, message],
+  );
+
+  const closeAlbumDetail = useCallback(() => {
+    setDetail(null);
+  }, []);
+
+  const handleApiKeyChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      saveApiKey(event.target.value);
+    },
+    [saveApiKey],
+  );
+
   const tabItems = useMemo(
     () => [
       {
@@ -137,13 +165,7 @@ export default function App() {
         children: (
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <ConfigGuide />
-            <ConfigForm
-              config={config}
-              onSaved={(nextConfig) => {
-                setConfig(nextConfig);
-                void loadStatus();
-              }}
-            />
+            <ConfigForm config={config} onSaved={handleConfigSaved} />
           </Space>
         ),
       },
@@ -152,7 +174,7 @@ export default function App() {
       albums,
       config,
       isRunning,
-      loadStatus,
+      handleConfigSaved,
       loading,
       refreshAll,
       showAlbum,
@@ -173,7 +195,7 @@ export default function App() {
             prefix={<KeyOutlined />}
             style={{ width: 280 }}
             value={apiKey}
-            onChange={(event) => saveApiKey(event.target.value)}
+            onChange={handleApiKeyChange}
           />
           <Button icon={<ReloadOutlined />} loading={loading} onClick={refreshAll}>
             刷新
@@ -198,7 +220,7 @@ export default function App() {
           </Card>
         </Space>
       </main>
-      <AlbumDetailDrawer album={detail} onClose={() => setDetail(null)} onSync={syncAlbum} />
+      <AlbumDetailDrawer album={detail} onClose={closeAlbumDetail} onSync={syncAlbum} />
     </Layout>
   );
 }

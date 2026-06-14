@@ -5,7 +5,7 @@ interface StatusCardProps {
   status: StatusResponse | null;
 }
 
-export default function StatusCard({ status }: StatusCardProps) {
+export function StatusCard({ status }: StatusCardProps) {
   if (!status) {
     return <Alert showIcon={true} type="info" message="正在读取服务状态..." />;
   }

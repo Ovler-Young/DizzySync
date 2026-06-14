@@ -2,6 +2,7 @@
 name = "dizzysync"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 description = "Dizzylab自动同步器"
 authors = ["去离子水 <ovlertheyoung@gmail.com>"]
 

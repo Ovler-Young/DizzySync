@@ -2,7 +2,7 @@ import { App as AntApp, ConfigProvider, theme } from "antd";
 import zhCn from "antd/locale/zh_CN";
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
+import { App } from "./App.tsx";
 import "./styles.css";
 
 const root = document.getElementById("root");

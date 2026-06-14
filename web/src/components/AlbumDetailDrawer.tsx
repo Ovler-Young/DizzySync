@@ -1,6 +1,7 @@
 import { SyncOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer, Image, List, Space, Tag, Typography } from "antd";
-import type { DiscInfo } from "../types.ts";
+import { useCallback } from "react";
+import type { DiscInfo, Track } from "../types.ts";
 
 interface AlbumDetailDrawerProps {
   album: DiscInfo | null;
@@ -8,17 +9,37 @@ interface AlbumDetailDrawerProps {
   onSync: (id: string) => void;
 }
 
-export default function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerProps) {
+interface SyncAlbumButtonProps {
+  albumId: string;
+  onSync: (id: string) => void;
+}
+
+function SyncAlbumButton({ albumId, onSync }: SyncAlbumButtonProps) {
+  const syncAlbum = useCallback(() => onSync(albumId), [albumId, onSync]);
+
+  return (
+    <Button icon={<SyncOutlined />} type="primary" onClick={syncAlbum}>
+      同步此专辑
+    </Button>
+  );
+}
+
+function renderTrack(track: Track, index: number) {
+  return (
+    <List.Item>
+      <Typography.Text>
+        {String(index + 1).padStart(2, "0")}. {track.title}
+        {track.authers ? ` — ${track.authers}` : ""}
+      </Typography.Text>
+    </List.Item>
+  );
+}
+
+export function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetailDrawerProps) {
   return (
     <Drawer
       destroyOnHidden={true}
-      extra={
-        album ? (
-          <Button icon={<SyncOutlined />} type="primary" onClick={() => onSync(album.id)}>
-            同步此专辑
-          </Button>
-        ) : null
-      }
+      extra={album ? <SyncAlbumButton albumId={album.id} onSync={onSync} /> : null}
       open={Boolean(album)}
       title={album?.title ?? "专辑详情"}
       width={720}
@@ -47,14 +68,7 @@ export default function AlbumDetailDrawer({ album, onClose, onSync }: AlbumDetai
             bordered={true}
             dataSource={album.tracks}
             header={`曲目 (${album.tracks.length})`}
-            renderItem={(track, index) => (
-              <List.Item>
-                <Typography.Text>
-                  {String(index + 1).padStart(2, "0")}. {track.title}
-                  {track.authers ? ` — ${track.authers}` : ""}
-                </Typography.Text>
-              </List.Item>
-            )}
+            renderItem={renderTrack}
           />
         </Space>
       ) : null}

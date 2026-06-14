@@ -2,7 +2,7 @@ import { Alert, Card, Collapse, Typography } from "antd";
 
 const { Paragraph, Text } = Typography;
 
-export default function ConfigGuide() {
+export function ConfigGuide() {
   return (
     <Card title="配置指南">
       <Alert

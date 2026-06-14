@@ -11,7 +11,7 @@ import {
   Space,
   Typography,
 } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
 import type { ConfigResponse, UpdateConfigRequest } from "../types.ts";
 
@@ -43,7 +43,7 @@ const formatOptions = [
   { label: "特典 gift", value: "gift" },
 ];
 
-export default function ConfigForm({ config, onSaved }: ConfigFormProps) {
+export function ConfigForm({ config, onSaved }: ConfigFormProps) {
   const { message } = App.useApp();
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
@@ -76,51 +76,54 @@ export default function ConfigForm({ config, onSaved }: ConfigFormProps) {
     }
   }, [form, initialValues]);
 
-  const submit = async (values: ConfigFormValues) => {
-    if (values.formats.includes("128") && values.formats.includes("320")) {
-      message.error("128 和 320 不能同时选择，因为都会输出 .mp3 文件");
-      return;
-    }
+  const submit = useCallback(
+    async (values: ConfigFormValues) => {
+      if (values.formats.includes("128") && values.formats.includes("320")) {
+        message.error("128 和 320 不能同时选择，因为都会输出 .mp3 文件");
+        return;
+      }
 
-    const password = values.password?.trim();
-    const apiKey = values.apiKey?.trim();
-    const payload: UpdateConfigRequest = {
-      user: {
-        username: values.username,
-        ...(password ? { password } : {}),
-      },
-      download: {
-        formats: values.formats,
-      },
-      paths: {
-        output_dir: values.outputDir,
-        directory_template: values.directoryTemplate,
-      },
-      behavior: {
-        skip_existing: values.skipExisting,
-        single_threaded: values.singleThreaded,
-        max_concurrent_albums: values.maxConcurrentAlbums,
-        generate_readme: values.generateReadme,
-        generate_nfo: values.generateNfo,
-        debug: values.debug,
-        metadata_only: values.metadataOnly,
-      },
-      api: apiKey ? { api_key: apiKey } : undefined,
-    };
+      const password = values.password?.trim();
+      const apiKey = values.apiKey?.trim();
+      const payload: UpdateConfigRequest = {
+        user: {
+          username: values.username,
+          ...(password ? { password } : {}),
+        },
+        download: {
+          formats: values.formats,
+        },
+        paths: {
+          output_dir: values.outputDir,
+          directory_template: values.directoryTemplate,
+        },
+        behavior: {
+          skip_existing: values.skipExisting,
+          single_threaded: values.singleThreaded,
+          max_concurrent_albums: values.maxConcurrentAlbums,
+          generate_readme: values.generateReadme,
+          generate_nfo: values.generateNfo,
+          debug: values.debug,
+          metadata_only: values.metadataOnly,
+        },
+        api: apiKey ? { api_key: apiKey } : undefined,
+      };
 
-    setSaving(true);
-    try {
-      const nextConfig = await api.updateConfig(payload);
-      message.success("配置已保存到 TOML");
-      form.setFieldValue("password", "");
-      form.setFieldValue("apiKey", "");
-      onSaved(nextConfig);
-    } catch (caught) {
-      message.error(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setSaving(false);
-    }
-  };
+      setSaving(true);
+      try {
+        const nextConfig = await api.updateConfig(payload);
+        message.success("配置已保存到 TOML");
+        form.setFieldValue("password", "");
+        form.setFieldValue("apiKey", "");
+        onSaved(nextConfig);
+      } catch (caught) {
+        message.error(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [form, message, onSaved],
+  );
 
   return (
     <Card title="设置">
