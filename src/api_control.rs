@@ -1,5 +1,5 @@
 use crate::client::DizzylabClient;
-use crate::config::Config;
+use crate::config::{Config, UserConfig};
 use crate::downloader::Downloader;
 use crate::types::{DiscInfo, DiscListItem, UserInfo};
 use anyhow::{anyhow, Result};
@@ -26,13 +26,19 @@ pub struct ApiServerOptions {
 
 #[derive(Clone)]
 struct ApiState {
-    client: Arc<RwLock<Option<DizzylabClient>>>,
-    token: Arc<RwLock<Option<String>>>,
-    user: Arc<RwLock<Option<UserInfo>>>,
+    sessions: Arc<RwLock<Vec<AccountSession>>>,
     config: Arc<RwLock<Config>>,
     config_path: String,
     job: Arc<Mutex<JobState>>,
     last_error: Arc<RwLock<Option<String>>>,
+}
+
+#[derive(Clone)]
+struct AccountSession {
+    account: UserConfig,
+    client: DizzylabClient,
+    token: String,
+    user: Option<UserInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +55,7 @@ struct StatusResponse {
     configured: bool,
     requires_auth: bool,
     user: Option<UserInfo>,
+    users: Vec<UserInfo>,
     job: JobState,
     last_error: Option<String>,
 }
@@ -68,13 +75,14 @@ struct ConfigResponse {
 #[derive(Debug, Serialize, Deserialize)]
 struct PublicConfig {
     user: PublicUserConfig,
+    users: Vec<PublicUserConfig>,
     download: PublicDownloadConfig,
     paths: PublicPathsConfig,
     behavior: PublicBehaviorConfig,
     api: PublicApiConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PublicUserConfig {
     username: String,
     has_password: bool,
@@ -112,6 +120,7 @@ struct PublicApiConfig {
 #[derive(Debug, Deserialize)]
 struct UpdateConfigRequest {
     user: Option<UpdateUserConfig>,
+    users: Option<Vec<UpdateUserConfig>>,
     download: Option<UpdateDownloadConfig>,
     paths: Option<UpdatePathsConfig>,
     behavior: Option<UpdateBehaviorConfig>,
@@ -169,9 +178,7 @@ pub async fn run(options: ApiServerOptions) -> Result<()> {
     config.save_to_file(&options.config_path)?;
 
     let state = ApiState {
-        client: Arc::new(RwLock::new(None)),
-        token: Arc::new(RwLock::new(None)),
-        user: Arc::new(RwLock::new(None)),
+        sessions: Arc::new(RwLock::new(Vec::new())),
         config: Arc::new(RwLock::new(config.clone())),
         config_path: options.config_path,
         job: Arc::new(Mutex::new(JobState::Idle)),
@@ -219,12 +226,18 @@ async fn health() -> Json<MessageResponse> {
 
 async fn status(State(state): State<ApiState>) -> Json<StatusResponse> {
     let config = state.config.read().await.clone();
+    let sessions = state.sessions.read().await.clone();
+    let users = sessions
+        .iter()
+        .filter_map(|session| session.user.clone())
+        .collect::<Vec<_>>();
     Json(StatusResponse {
         status: "ok",
-        ready: state.token.read().await.is_some(),
+        ready: !sessions.is_empty(),
         configured: has_credentials(&config),
         requires_auth: !config.api.api_key.is_empty(),
-        user: state.user.read().await.clone(),
+        user: users.first().cloned(),
+        users,
         job: state.job.lock().await.clone(),
         last_error: state.last_error.read().await.clone(),
     })
@@ -255,19 +268,14 @@ async fn update_config(
     validate_credentials(&next_config).map_err(ApiError::bad_request)?;
     validate_formats(&next_config).map_err(ApiError::bad_request)?;
 
-    // Validate the new credentials before committing the config to memory or disk.
-    let next_client = DizzylabClient::new(next_config.behavior.debug)?;
-    let next_token = next_client
-        .login(&next_config.user.username, &next_config.user.password)
+    // Validate all credentials before committing the config to memory or disk.
+    let next_sessions = login_accounts(&next_config)
         .await
         .map_err(|e| ApiError::unauthorized(format!("登录失败: {e}")))?;
-    let next_user = next_client.get_my_info(&next_token).await.ok();
 
     next_config.save_to_file(&state.config_path)?;
     *state.config.write().await = next_config;
-    *state.client.write().await = Some(next_client);
-    *state.token.write().await = Some(next_token);
-    *state.user.write().await = next_user;
+    *state.sessions.write().await = next_sessions;
 
     let config = state.config.read().await.clone();
     Ok(Json(ConfigResponse {
@@ -301,17 +309,19 @@ async fn bootstrap_config(
         ..Config::default()
     };
     config.apply_env_overrides(false);
+    let mut account = config.accounts().first().cloned().unwrap_or_default();
     if let Some(username) = req.username {
-        config.user.username = username;
+        account.username = username;
     }
     if let Some(password) = req.password {
-        config.user.password = password;
+        account.password = password;
+    }
+    if !account.username.is_empty() || !account.password.is_empty() {
+        config.set_accounts(vec![account]);
     }
     config.save_to_file(&state.config_path)?;
     *state.config.write().await = config.clone();
-    *state.client.write().await = None;
-    *state.token.write().await = None;
-    *state.user.write().await = None;
+    *state.sessions.write().await = Vec::new();
 
     Ok(Json(ConfigResponse {
         config_path: state.config_path.clone(),
@@ -325,9 +335,14 @@ async fn list_albums(
     headers: HeaderMap,
 ) -> Result<Json<Vec<DiscListItem>>, ApiError> {
     authorize(&state, &headers).await?;
-    let (client, token) = ensure_logged_in(&state).await?;
-    let albums = client.get_my_discs(&token).await?;
-    Ok(Json(albums))
+    let sessions = ensure_logged_in(&state).await?;
+    let mut albums_by_id = std::collections::BTreeMap::new();
+    for session in sessions {
+        for album in session.client.get_my_discs(&session.token).await? {
+            albums_by_id.entry(album.id.clone()).or_insert(album);
+        }
+    }
+    Ok(Json(albums_by_id.into_values().collect()))
 }
 
 async fn get_album(
@@ -336,9 +351,17 @@ async fn get_album(
     Path(id): Path<String>,
 ) -> Result<Json<DiscInfo>, ApiError> {
     authorize(&state, &headers).await?;
-    let (client, token) = ensure_logged_in(&state).await?;
-    let album = client.get_disc_info(&id, &token).await?;
-    Ok(Json(album))
+    let sessions = ensure_logged_in(&state).await?;
+    let mut last_error = None;
+    for session in sessions {
+        match session.client.get_disc_info(&id, &session.token).await {
+            Ok(album) => return Ok(Json(album)),
+            Err(e) => last_error = Some(e),
+        }
+    }
+    Err(last_error
+        .map(ApiError::from)
+        .unwrap_or_else(|| ApiError::bad_request("未配置 Dizzylab 账号")))
 }
 
 async fn start_sync(
@@ -407,44 +430,86 @@ async fn start_job(
 }
 
 async fn run_sync_job(state: ApiState, album_id: Option<String>) -> Result<()> {
-    let (client, token) = ensure_logged_in(&state).await?;
+    let sessions = ensure_logged_in(&state).await?;
     let config = state.config.read().await.clone();
-    let downloader = Downloader::new(client.clone(), config, token.clone());
+    let mut failures = Vec::new();
 
-    if let Some(album_id) = album_id {
-        let disc_info = client.get_disc_info(&album_id, &token).await?;
-        downloader.download_album(&disc_info).await?;
-    } else {
-        let albums = client.get_my_discs(&token).await?;
-        downloader.sync_all_albums(albums).await?;
+    for session in sessions {
+        let account_label = account_label(&session.account);
+        let downloader = Downloader::new(session.client.clone(), config.clone(), session.token.clone());
+
+        if let Some(album_id) = &album_id {
+            match session.client.get_disc_info(album_id, &session.token).await {
+                Ok(disc_info) => {
+                    info!("账号 {} 开始同步专辑 {}", account_label, album_id);
+                    if let Err(e) = downloader.download_album(&disc_info).await {
+                        failures.push(format!("{account_label}: {e}"));
+                    }
+                }
+                Err(e) => {
+                    info!("账号 {} 未找到或无法访问专辑 {}: {}", account_label, album_id, e);
+                }
+            }
+        } else {
+            match session.client.get_my_discs(&session.token).await {
+                Ok(albums) => {
+                    info!("账号 {} 开始同步 {} 个专辑", account_label, albums.len());
+                    if let Err(e) = downloader.sync_all_albums(albums).await {
+                        failures.push(format!("{account_label}: {e}"));
+                    }
+                }
+                Err(e) => failures.push(format!("{account_label}: {e}")),
+            }
+        }
     }
 
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(failures.join("; ")))
+    }
 }
 
-async fn ensure_logged_in(state: &ApiState) -> Result<(DizzylabClient, String)> {
-    if let (Some(client), Some(token)) = (
-        state.client.read().await.clone(),
-        state.token.read().await.clone(),
-    ) {
-        return Ok((client, token));
+async fn ensure_logged_in(state: &ApiState) -> Result<Vec<AccountSession>> {
+    let sessions = state.sessions.read().await.clone();
+    if !sessions.is_empty() {
+        return Ok(sessions);
     }
 
     let config = state.config.read().await.clone();
-    validate_credentials(&config)?;
-    validate_formats(&config)?;
+    let sessions = login_accounts(&config).await?;
+    *state.sessions.write().await = sessions.clone();
+    Ok(sessions)
+}
 
-    let client = DizzylabClient::new(config.behavior.debug)?;
-    let token = client
-        .login(&config.user.username, &config.user.password)
-        .await
-        .map_err(|e| anyhow!("登录失败: {e}"))?;
+async fn login_accounts(config: &Config) -> Result<Vec<AccountSession>> {
+    validate_credentials(config)?;
+    validate_formats(config)?;
 
-    let user = client.get_my_info(&token).await.ok();
-    *state.client.write().await = Some(client.clone());
-    *state.token.write().await = Some(token.clone());
-    *state.user.write().await = user;
-    Ok((client, token))
+    let mut sessions = Vec::new();
+    for account in config.accounts() {
+        let client = DizzylabClient::new(config.behavior.debug)?;
+        let token = client
+            .login(&account.username, &account.password)
+            .await
+            .map_err(|e| anyhow!("{}: {e}", account_label(&account)))?;
+        let user = client.get_my_info(&token).await.ok();
+        sessions.push(AccountSession {
+            account,
+            client,
+            token,
+            user,
+        });
+    }
+    Ok(sessions)
+}
+
+fn account_label(account: &UserConfig) -> String {
+    if account.username.trim().is_empty() {
+        "<empty>".to_string()
+    } else {
+        account.username.clone()
+    }
 }
 
 async fn authorize(state: &ApiState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -471,15 +536,36 @@ async fn authorize(state: &ApiState, headers: &HeaderMap) -> Result<(), ApiError
 }
 
 fn apply_config_update(config: &mut Config, req: UpdateConfigRequest) {
-    if let Some(user) = req.user {
+    if let Some(users) = req.users {
+        let existing = config.accounts();
+        let next_users = users
+            .into_iter()
+            .enumerate()
+            .map(|(index, user)| {
+                let mut next = existing.get(index).cloned().unwrap_or_default();
+                if let Some(username) = user.username {
+                    next.username = username;
+                }
+                if let Some(password) = user.password {
+                    if !password.is_empty() {
+                        next.password = password;
+                    }
+                }
+                next
+            })
+            .collect::<Vec<_>>();
+        config.set_accounts(next_users);
+    } else if let Some(user) = req.user {
+        let mut next = config.accounts().first().cloned().unwrap_or_default();
         if let Some(username) = user.username {
-            config.user.username = username;
+            next.username = username;
         }
         if let Some(password) = user.password {
             if !password.is_empty() {
-                config.user.password = password;
+                next.password = password;
             }
         }
+        config.set_accounts(vec![next]);
     }
 
     if let Some(download) = req.download {
@@ -536,7 +622,11 @@ pub fn validate_credentials(config: &Config) -> Result<()> {
 }
 
 fn has_credentials(config: &Config) -> bool {
-    !config.user.username.trim().is_empty() && !config.user.password.trim().is_empty()
+    let accounts = config.accounts();
+    !accounts.is_empty()
+        && accounts
+            .iter()
+            .all(|account| !account.username.trim().is_empty() && !account.password.trim().is_empty())
 }
 
 pub fn validate_formats(config: &Config) -> Result<()> {
@@ -572,11 +662,20 @@ pub fn validate_formats(config: &Config) -> Result<()> {
 
 impl PublicConfig {
     fn from_config(config: &Config) -> Self {
+        let users = config
+            .accounts()
+            .into_iter()
+            .map(|account| PublicUserConfig {
+                username: account.username,
+                has_password: !account.password.is_empty(),
+            })
+            .collect::<Vec<_>>();
         Self {
-            user: PublicUserConfig {
-                username: config.user.username.clone(),
-                has_password: !config.user.password.is_empty(),
-            },
+            user: users.first().cloned().unwrap_or(PublicUserConfig {
+                username: String::new(),
+                has_password: false,
+            }),
+            users,
             download: PublicDownloadConfig {
                 formats: config.download.formats.clone(),
             },

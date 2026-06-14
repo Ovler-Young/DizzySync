@@ -1,9 +1,19 @@
 import { Alert, Card, Descriptions, Tag, Typography } from "antd";
 import { useI18n } from "../i18n.tsx";
-import type { StatusResponse } from "../types.ts";
+import type { StatusResponse, UserInfo } from "../types.ts";
 
 interface StatusCardProps {
   status: StatusResponse | null;
+}
+
+function resolveUsers(status: StatusResponse): UserInfo[] {
+  if (status.users.length > 0) {
+    return status.users;
+  }
+  if (status.user) {
+    return [status.user];
+  }
+  return [];
 }
 
 export function StatusCard({ status }: StatusCardProps) {
@@ -13,7 +23,34 @@ export function StatusCard({ status }: StatusCardProps) {
     return <Alert showIcon={true} type="info" message={t("status.loading")} />;
   }
 
-  const job = status.job.state === "running" ? `${status.job.kind}` : t("status.idle");
+  let job = t("status.idle");
+  let jobColor = "default";
+  if (status.job.state === "running") {
+    job = status.job.kind;
+    jobColor = "processing";
+  }
+
+  let loginColor = "orange";
+  let loginText = t("status.notReady");
+  if (status.ready) {
+    loginColor = "green";
+    loginText = t("status.ready");
+  }
+
+  const users = resolveUsers(status);
+  let userText = "-";
+  if (users.length > 0) {
+    userText = users.map((user) => `${user.username} (${user.uid})`).join(", ");
+  }
+
+  let lastError = null;
+  if (status.last_error) {
+    lastError = (
+      <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
+        {t("status.lastError", { message: status.last_error })}
+      </Typography.Paragraph>
+    );
+  }
 
   return (
     <Card title={t("status.title")}>
@@ -22,22 +59,14 @@ export function StatusCard({ status }: StatusCardProps) {
           <Tag color="green">{status.status}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label={t("status.login")}>
-          <Tag color={status.ready ? "green" : "orange"}>
-            {status.ready ? t("status.ready") : t("status.notReady")}
-          </Tag>
+          <Tag color={loginColor}>{loginText}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label={t("status.user")}>
-          {status.user ? `${status.user.username} (${status.user.uid})` : "-"}
-        </Descriptions.Item>
+        <Descriptions.Item label={t("status.user")}>{userText}</Descriptions.Item>
         <Descriptions.Item label={t("status.syncJob")}>
-          <Tag color={status.job.state === "running" ? "processing" : "default"}>{job}</Tag>
+          <Tag color={jobColor}>{job}</Tag>
         </Descriptions.Item>
       </Descriptions>
-      {status.last_error ? (
-        <Typography.Paragraph style={{ marginBottom: 0, marginTop: 16 }} type="danger">
-          {t("status.lastError", { message: status.last_error })}
-        </Typography.Paragraph>
-      ) : null}
+      {lastError}
     </Card>
   );
 }
