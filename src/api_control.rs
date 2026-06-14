@@ -394,15 +394,22 @@ fn filter_logs(logs: &[LogEntry], query: &LogQuery) -> Vec<LogEntry> {
     let end = query.end.as_deref().and_then(parse_log_time);
 
     logs.iter()
-        .filter(|entry| level.is_none_or(|level| entry.level.eq_ignore_ascii_case(level)))
-        .filter(|entry| {
-            query
-                .date
-                .as_deref()
-                .is_none_or(|date| log_date(entry.timestamp) == date)
+        .filter(|entry| match level {
+            Some(level) => entry.level.eq_ignore_ascii_case(level),
+            None => true,
         })
-        .filter(|entry| start.is_none_or(|start| entry.timestamp >= start))
-        .filter(|entry| end.is_none_or(|end| entry.timestamp <= end))
+        .filter(|entry| match query.date.as_deref() {
+            Some(date) => log_date(entry.timestamp) == date,
+            None => true,
+        })
+        .filter(|entry| match start {
+            Some(start) => entry.timestamp >= start,
+            None => true,
+        })
+        .filter(|entry| match end {
+            Some(end) => entry.timestamp <= end,
+            None => true,
+        })
         .cloned()
         .collect()
 }
