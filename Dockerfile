@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
-ARG RUST_VERSION=1.89
+ARG RUST_VERSION=1.100
 ARG NODE_VERSION=24
-ARG PNPM_VERSION=11.3.0
+ARG PNPM_VERSION=11.29.0
 
-FROM node:${NODE_VERSION}-bookworm-slim AS web-builder
+FROM node:${NODE_VERSION}-trixie-slim AS web-builder
 ARG PNPM_VERSION
 WORKDIR /app/web
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 COPY web/ ./
 RUN pnpm build
 
-FROM rust:${RUST_VERSION}-bookworm AS rust-builder
+FROM rust:${RUST_VERSION}-trixie AS rust-builder
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config ca-certificates \
@@ -27,7 +27,7 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo build --release \
     && cp /app/target/release/dizzysync /usr/local/bin/dizzysync
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
