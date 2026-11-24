@@ -1,9 +1,8 @@
 use super::Downloader;
-use crate::archive::filetime_from_http_date;
+use crate::archive::{filetime_from_http_date, set_file_times};
 use crate::metadata::{extract_year_from_date, normalize_date};
 use crate::types::{DiscInfo, Track};
 use anyhow::Result;
-use filetime::set_file_times;
 use id3::TagLike;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -60,7 +59,7 @@ impl Downloader {
                 debug!("文件已存在但缺少标签，补写标签: {}", file_name);
                 let saved_mtime = std::fs::metadata(&file_path)
                     .ok()
-                    .map(|m| filetime::FileTime::from_last_modification_time(&m));
+                    .and_then(|m| m.modified().ok());
                 if let Err(e) = write_mp3_tags(
                     &file_path,
                     disc_info,
@@ -72,7 +71,7 @@ impl Downloader {
                 ) {
                     warn!("写入ID3标签失败 {}: {}", file_name, e);
                 } else if let Some(ft) = saved_mtime {
-                    if let Err(e) = set_file_times(&file_path, ft, ft) {
+                    if let Err(e) = set_file_times(&file_path, ft) {
                         warn!("还原MP3时间戳失败 {}: {}", file_name, e);
                     }
                 }
@@ -115,7 +114,7 @@ impl Downloader {
             // Set timestamp AFTER tag write, since tag write resets mtime.
             if let Some(date_str) = &last_modified {
                 if let Some(ft) = filetime_from_http_date(date_str) {
-                    if let Err(e) = set_file_times(&file_path, ft, ft) {
+                    if let Err(e) = set_file_times(&file_path, ft) {
                         warn!("设置文件时间戳失败 {}: {}", file_name, e);
                     }
                 }
@@ -234,7 +233,7 @@ impl Downloader {
             // Save mtime before tag write so we can restore it afterwards.
             let saved_mtime = std::fs::metadata(file_path)
                 .ok()
-                .map(|m| filetime::FileTime::from_last_modification_time(&m));
+                .and_then(|m| m.modified().ok());
 
             if let Err(e) = write_flac_tags(
                 file_path,
@@ -248,7 +247,7 @@ impl Downloader {
             } else {
                 debug!("已写入FLAC标签: {}", file_path.display());
                 if let Some(ft) = saved_mtime {
-                    if let Err(e) = set_file_times(file_path, ft, ft) {
+                    if let Err(e) = set_file_times(file_path, ft) {
                         warn!("还原FLAC时间戳失败 {}: {}", file_path.display(), e);
                     }
                 }

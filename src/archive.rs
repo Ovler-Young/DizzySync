@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
 use encoding_rs::GBK;
-use filetime::{set_file_times, FileTime};
 use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 use tracing::{debug, warn};
 use unrar::Archive;
 use zip::ZipArchive;
@@ -172,16 +172,16 @@ fn sanitize_archive_path(path: impl AsRef<Path>) -> Option<PathBuf> {
     }
 }
 
-/// Parse an HTTP `Last-Modified` header value (RFC 2822) into a FileTime.
+/// Parse an HTTP `Last-Modified` header value (RFC 2822) into a `SystemTime`.
 /// Example input: `"Fri, 20 Feb 2026 02:15:26 GMT"`
-pub fn filetime_from_http_date(date_str: &str) -> Option<FileTime> {
+pub fn filetime_from_http_date(date_str: &str) -> Option<SystemTime> {
     let dt = chrono::DateTime::parse_from_rfc2822(date_str).ok()?;
-    Some(FileTime::from_unix_time(dt.timestamp(), 0))
+    Some(SystemTime::from(dt))
 }
 
-/// Parse an album release_date string into a FileTime suitable for `set_file_times`.
+/// Parse an album release_date string into a `SystemTime` suitable for `set_file_times`.
 /// Delegates format normalization to `metadata::normalize_date`.
-pub fn filetime_from_release_date(date_str: &str) -> Option<FileTime> {
+pub fn filetime_from_release_date(date_str: &str) -> Option<SystemTime> {
     use chrono::NaiveDate;
     let iso = crate::metadata::normalize_date(date_str);
     let mut parts = iso.splitn(3, '-');
@@ -189,7 +189,23 @@ pub fn filetime_from_release_date(date_str: &str) -> Option<FileTime> {
     let m: u32 = parts.next()?.parse().ok()?;
     let d: u32 = parts.next()?.parse().ok()?;
     let dt = NaiveDate::from_ymd_opt(y, m, d)?.and_hms_opt(0, 0, 0)?;
-    Some(FileTime::from_unix_time(dt.and_utc().timestamp(), 0))
+    Some(SystemTime::from(dt.and_utc()))
+}
+
+/// Set both access and modification time of a file or directory.
+pub fn set_file_times(path: &Path, time: SystemTime) -> std::io::Result<()> {
+    #[cfg(windows)]
+    let file = {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_BACKUP_SEMANTICS lets the handle open a directory.
+        fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(0x0200_0000)
+            .open(path)?
+    };
+    #[cfg(not(windows))]
+    let file = File::open(path)?;
+    file.set_times(fs::FileTimes::new().set_accessed(time).set_modified(time))
 }
 
 pub fn set_file_timestamps(file_path: &Path, zip_datetime: zip::DateTime) -> Result<()> {
@@ -202,10 +218,9 @@ pub fn set_file_timestamps(file_path: &Path, zip_datetime: zip::DateTime) -> Res
 
     if let Some(naive_date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
         if let Some(naive_datetime) = naive_date.and_hms_opt(hour, minute, second) {
-            let unix_timestamp = naive_datetime.and_utc().timestamp();
-            let filetime = FileTime::from_unix_time(unix_timestamp, 0);
+            let time = SystemTime::from(naive_datetime.and_utc());
 
-            if let Err(e) = set_file_times(file_path, filetime, filetime) {
+            if let Err(e) = set_file_times(file_path, time) {
                 return Err(anyhow!("设置文件时间戳失败: {e}"));
             }
 

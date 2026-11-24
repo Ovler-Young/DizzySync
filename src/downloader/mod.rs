@@ -2,13 +2,13 @@ mod tracks;
 mod web;
 
 use crate::archive;
+use crate::archive::set_file_times;
 use crate::client::DizzylabClient;
 use crate::config::Config;
 use crate::metadata;
 use crate::types::{DiscInfo, DiscListItem};
 use anyhow::{anyhow, Result};
 use chrono::{self, Datelike};
-use filetime::set_file_times;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -194,7 +194,7 @@ impl Downloader {
             }
             let path = album_dir.join(name);
             if path.exists() {
-                if let Err(e) = set_file_times(&path, ft, ft) {
+                if let Err(e) = set_file_times(&path, ft) {
                     warn!("设置 {} 时间戳失败: {}", name, e);
                 } else {
                     debug!("已设置 {} 时间戳", name);
@@ -203,7 +203,7 @@ impl Downloader {
         }
 
         // Directory timestamp must come last (any file write inside updates it).
-        if let Err(e) = set_file_times(album_dir, ft, ft) {
+        if let Err(e) = set_file_times(album_dir, ft) {
             warn!("设置专辑目录时间戳失败: {}", e);
         } else {
             debug!("已设置专辑目录时间戳");
