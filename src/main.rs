@@ -20,7 +20,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = Command::new("DizzySync")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("去离子水")
         .about("Dizzylab自动同步器")
         .arg(
